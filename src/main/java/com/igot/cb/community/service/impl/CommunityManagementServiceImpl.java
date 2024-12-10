@@ -4,11 +4,10 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.TextNode;
 import com.igot.cb.authentication.util.AccessTokenValidator;
-import com.igot.cb.community.entity.CommunityEngagementEntity;
+import com.igot.cb.community.entity.CommunityEntity;
 import com.igot.cb.community.repository.CommunityEngagementRepository;
-import com.igot.cb.community.service.CommunityEngagementService;
+import com.igot.cb.community.service.CommunityManagementService;
 import com.igot.cb.pores.cache.CacheService;
 import com.igot.cb.pores.elasticsearch.service.EsUtilService;
 import com.igot.cb.pores.exceptions.CustomException;
@@ -34,7 +33,7 @@ import java.util.*;
  */
 @Service
 @Slf4j
-public class CommunityEngagementServiceImpl implements CommunityEngagementService {
+public class CommunityManagementServiceImpl implements CommunityManagementService {
 
     @Autowired
     private EsUtilService esUtilService;
@@ -54,7 +53,7 @@ public class CommunityEngagementServiceImpl implements CommunityEngagementServic
     @Autowired
     private AccessTokenValidator accessTokenValidator;
 
-    private Logger logger = LoggerFactory.getLogger(CommunityEngagementServiceImpl.class);
+    private Logger logger = LoggerFactory.getLogger(CommunityManagementServiceImpl.class);
 
 
     @Override
@@ -71,7 +70,7 @@ public class CommunityEngagementServiceImpl implements CommunityEngagementServic
                 return response;
             }
             String communityId = UUID.randomUUID().toString();
-            CommunityEngagementEntity communityEngagementEntity = new CommunityEngagementEntity();
+            CommunityEntity communityEngagementEntity = new CommunityEntity();
             communityEngagementEntity.setCommunityId(communityId);
             ((ObjectNode) communityDetails).put(Constants.COUNT_OF_PEOPLE_JOINED, 0);
             ((ObjectNode) communityDetails).put(Constants.CREATED_BY, userId);
@@ -82,7 +81,7 @@ public class CommunityEngagementServiceImpl implements CommunityEngagementServic
             communityEngagementEntity.setUpdatedOn(currentTimestamp);
             communityEngagementEntity.setCreated_by(userId);
             communityEngagementEntity.setActive(true);
-            CommunityEngagementEntity saveJsonEntity = communityEngagementRepository.save(communityEngagementEntity);
+            CommunityEntity saveJsonEntity = communityEngagementRepository.save(communityEngagementEntity);
             if (!saveJsonEntity.getData().isNull()) {
                 communityDetails = addExtraproperties(saveJsonEntity.getData(), communityId, currentTimestamp);
                 Map<String, Object> communityDetailsMap = objectMapper.convertValue(communityDetails, Map.class);
@@ -142,12 +141,12 @@ public class CommunityEngagementServiceImpl implements CommunityEngagementServic
                         .put(Constants.COMMUNITY_DETAILS, objectMapper.readValue(cachedJson, new TypeReference<Object>() {
                         }));
             } else {
-                Optional<CommunityEngagementEntity> communityEntityOptional = communityEngagementRepository.findByCommunityIdAndIsActive(communityId, true);
+                Optional<CommunityEntity> communityEntityOptional = communityEngagementRepository.findByCommunityIdAndIsActive(communityId, true);
                 if (communityEntityOptional.isPresent()) {
-                    CommunityEngagementEntity communityEngagementEntiy = communityEntityOptional.get();
+                    CommunityEntity communityEntity = communityEntityOptional.get();
                     log.info("Record coming from postgres db");
                     response.getParams().setErrMsg(Constants.SUCCESSFULLY_READING);
-                    response.getResult().put(Constants.COMMUNITY_DETAILS, objectMapper.convertValue(communityEngagementEntiy.getData(), new TypeReference<Object>() {
+                    response.getResult().put(Constants.COMMUNITY_DETAILS, objectMapper.convertValue(communityEntity.getData(), new TypeReference<Object>() {
                     }));
                 } else {
                     logger.error("Invalid Id: {}", communityId);
@@ -198,12 +197,12 @@ public class CommunityEngagementServiceImpl implements CommunityEngagementServic
             return response;
         }
         try {
-            Optional<CommunityEngagementEntity> communityEntityOptional = communityEngagementRepository.findByCommunityIdAndIsActive(communityId, true);
+            Optional<CommunityEntity> communityEntityOptional = communityEngagementRepository.findByCommunityIdAndIsActive(communityId, true);
             if (communityEntityOptional.isPresent()) {
-                CommunityEngagementEntity communityEngagementEntity = communityEntityOptional.get();
-                communityEngagementEntity.setActive(false);
-                communityEngagementRepository.save(communityEngagementEntity);
-                JsonNode esSave = communityEngagementEntity.getData();
+                CommunityEntity communityEntity = communityEntityOptional.get();
+                communityEntity.setActive(false);
+                communityEngagementRepository.save(communityEntity);
+                JsonNode esSave = communityEntity.getData();
                 ((ObjectNode) esSave).put(Constants.STATUS, Constants.INACTIVE);
                 Timestamp currentTimestamp = new Timestamp(System.currentTimeMillis());
                 ((ObjectNode) esSave).put(Constants.UPDATED_ON, String.valueOf(currentTimestamp));
@@ -240,7 +239,7 @@ public class CommunityEngagementServiceImpl implements CommunityEngagementServic
             if (communityDetails.has(Constants.COMMUNITY_ID) && !communityDetails.get(Constants.COMMUNITY_ID).isNull()) {
                 String communityId = communityDetails.get(Constants.COMMUNITY_ID).asText();
                 Timestamp currentTime = new Timestamp(System.currentTimeMillis());
-                Optional<CommunityEngagementEntity> communityEntityOptional = communityEngagementRepository.findByCommunityIdAndIsActive(communityId, true);
+                Optional<CommunityEntity> communityEntityOptional = communityEngagementRepository.findByCommunityIdAndIsActive(communityId, true);
                 if (!communityEntityOptional.isPresent()) {
                     response.getParams().setErrMsg(Constants.INVALID_COMMUNITY_ID);
                     response.setResponseCode(HttpStatus.BAD_REQUEST);

@@ -26,7 +26,7 @@ import org.hibernate.annotations.TypeDef;
 @Table(name = "communities")
 @TypeDef(name = "jsonb", typeClass = JsonBinaryType.class)
 @Entity
-public class CommunityEngagementEntity {
+public class CommunityEntity {
     @Id
     private String communityId;
 

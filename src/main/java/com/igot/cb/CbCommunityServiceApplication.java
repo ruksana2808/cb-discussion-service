@@ -1,5 +1,6 @@
 package com.igot.cb;
 
+import com.igot.cb.pores.util.PropertiesCache;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
@@ -24,6 +25,7 @@ import org.springframework.web.client.RestTemplate;
 @SpringBootApplication
 public class CbCommunityServiceApplication {
 
+
 	public static void main(String[] args) {
 		SpringApplication.run(CbCommunityServiceApplication.class, args);
 	}
@@ -34,14 +36,37 @@ public class CbCommunityServiceApplication {
     }
 
     private ClientHttpRequestFactory getClientHttpRequestFactory() {
-        int timeout = 45000;
-        RequestConfig config = RequestConfig.custom().setConnectTimeout(timeout).setConnectionRequestTimeout(timeout)
-                .setSocketTimeout(timeout).build();
-        CloseableHttpClient client = HttpClientBuilder.create().setMaxConnTotal(2000).setMaxConnPerRoute(500)
-                .setDefaultRequestConfig(config).build();
-        HttpComponentsClientHttpRequestFactory cRequestFactory = new HttpComponentsClientHttpRequestFactory(client);
-        cRequestFactory.setReadTimeout(timeout);
-        return cRequestFactory;
+
+      // Get the PropertiesCache instance to fetch the properties
+      PropertiesCache propertiesCache = PropertiesCache.getInstance();
+
+      // Fetch timeout and connection values from PropertiesCache
+      int connectTimeout = Integer.parseInt(propertiesCache.getProperty("rest.client.connect.timeout"));
+      int readTimeout = Integer.parseInt(propertiesCache.getProperty("rest.client.read.timeout"));
+      int connectionRequestTimeout = Integer.parseInt(propertiesCache.getProperty("rest.client.connection.request.timeout"));
+      int maxConnections = Integer.parseInt(propertiesCache.getProperty("rest.client.max.connections"));
+      int maxConnectionsPerRoute = Integer.parseInt(propertiesCache.getProperty("rest.client.max.connections.per.route"));
+
+      // Configure the RequestConfig with timeouts
+      RequestConfig config = RequestConfig.custom()
+          .setConnectTimeout(connectTimeout)
+          .setSocketTimeout(readTimeout)
+          .setConnectionRequestTimeout(connectionRequestTimeout)
+          .build();
+
+      // Configure the CloseableHttpClient with max connections
+      CloseableHttpClient client = HttpClientBuilder.create()
+          .setMaxConnTotal(maxConnections)
+          .setMaxConnPerRoute(maxConnectionsPerRoute)
+          .setDefaultRequestConfig(config)
+          .build();
+
+      // Set the read timeout on the request factory
+      HttpComponentsClientHttpRequestFactory cRequestFactory = new HttpComponentsClientHttpRequestFactory(client);
+      cRequestFactory.setReadTimeout(readTimeout);
+      cRequestFactory.setConnectTimeout(connectTimeout);
+
+      return cRequestFactory;
     }
 
 }

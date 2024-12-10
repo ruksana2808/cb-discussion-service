@@ -7,6 +7,7 @@ import org.apache.logging.log4j.Logger;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
+import org.springframework.stereotype.Component;
 
 /**
  * @author Mahesh RV
@@ -16,6 +17,7 @@ import java.util.Properties;
  * It loads properties from specified files and provides methods to access them.
  * Also handles environment variable overrides for properties.
  */
+
 public class PropertiesCache {
     // Logger for logging messages
     private final Logger logger = LogManager.getLogger(getClass());
