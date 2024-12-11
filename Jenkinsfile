@@ -21,6 +21,40 @@ node() {
 	        build_tag = sh(script: "echo " + params.github_release_tag.split('/')[-1] + "_" + commit_hash + "_" + env.BUILD_NUMBER, returnStdout: true).trim()
                 echo "build_tag: " + build_tag
 
+if(params.enable_code_analysis){
+            stage('Script fetch'){
+               build job: "Build/CodeReview/${JOB_BASE_NAME}", wait: true
+	    //   dir("${WORKSPACE}/sonarqube"){
+		// sh '''
+		//   if [ ! -d ".git" ]; then
+		//   git init
+		//   fi
+		  
+		//   if ! git remote get-url origin > /dev/null 2>&1; then
+		//   git remote add origin https://github.com/thejk726/sunbird-devops.git
+		//   fi
+
+		//   git config core.sparseCheckout true
+		//   echo "code_analysis/script.sh" > .git/info/sparse-checkout
+		//   git pull origin code_analysis_test
+		// '''
+	    //   }
+            }
+
+	    // stage('Code analysis'){
+	    // withCredentials([string(credentialsId: 'sonar_token', variable: 'SONAR_LOGIN')]){
+	    //  withSonarQubeEnv('sonar-server'){
+		// sh '''
+		//   ./sonarqube/code_analysis/script.sh ${SONAR_LOGIN}
+		// '''
+	    //  }
+	    // }
+	    // }
+        }
+
+
+
+
         stage('docker-pre-build') {
             sh '''
 	    docker build -f ./Dockerfile.build -t $docker_pre_build .
