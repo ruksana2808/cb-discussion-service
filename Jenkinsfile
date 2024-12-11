@@ -21,6 +21,14 @@ node() {
 	        build_tag = sh(script: "echo " + params.github_release_tag.split('/')[-1] + "_" + commit_hash + "_" + env.BUILD_NUMBER, returnStdout: true).trim()
                 echo "build_tag: " + build_tag
 
+if(params.enable_code_analysis){
+            stage('Code analysis'){
+               build job: "Build/CodeReview/${JOB_BASE_NAME}", wait: true
+        }
+	}
+
+
+
         stage('docker-pre-build') {
             sh '''
 	    docker build -f ./Dockerfile.build -t $docker_pre_build .
