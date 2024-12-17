@@ -50,20 +50,27 @@ public class CommunityController {
     @PutMapping("/join")
     public ResponseEntity<ApiResponse> join(@RequestBody Map<String, Object> request,
         @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
-        ApiResponse response = communityManagementService.joinAndUnjoinCommunity(request, authToken);
+        ApiResponse response = communityManagementService.joinCommunity(request, authToken);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
-    @GetMapping("/read/user/joined")
+    @GetMapping("/user/communities")
     public ResponseEntity<ApiResponse> readJoin(@RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
         ApiResponse response = communityManagementService.communitiesJoinedByUser(authToken);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
-    @GetMapping("/joined/users/{communityId}")
+    @GetMapping("/community/listuser/{communityId}")
     public ResponseEntity<ApiResponse> listOfUsersJoined(@PathVariable String communityId,
         @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
         ApiResponse response = communityManagementService.listOfUsersJoined(communityId, authToken);
         return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
+    @PutMapping("/unjoin")
+    public ResponseEntity<ApiResponse> unJoin(@RequestBody Map<String, Object> request,
+        @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
+        ApiResponse response = communityManagementService.unJoinCommunity(request, authToken);
+        return new ResponseEntity<>(response, response.getResponseCode());
     }
 }

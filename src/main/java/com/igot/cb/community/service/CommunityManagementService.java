@@ -17,9 +17,11 @@ public interface CommunityManagementService {
 
     ApiResponse update(JsonNode communityDetails, String authToken);
 
-    ApiResponse joinAndUnjoinCommunity(Map<String, Object> request, String authToken);
+    ApiResponse joinCommunity(Map<String, Object> request, String authToken);
 
     ApiResponse communitiesJoinedByUser(String authToken);
 
     ApiResponse listOfUsersJoined(String communityId, String authToken);
+
+    ApiResponse unJoinCommunity(Map<String, Object> request, String authToken);
 }

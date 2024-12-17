@@ -291,29 +291,27 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
     }
 
     @Override
-    public ApiResponse joinAndUnjoinCommunity(Map<String, Object> request, String authToken) {
+    public ApiResponse joinCommunity(Map<String, Object> request, String authToken) {
         log.info("CommunityEngagementService:joinAndUnjoinCommunity:joining");
-        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_UPDATE);
-        String error = validateJoinPayload(request);
-        if (StringUtils.isNotBlank(error)) {
-            return returnErrorMsg(error, HttpStatus.BAD_REQUEST, response);
-        }
-
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_JOIN);
         try {
             String userId = accessTokenValidator.verifyUserToken(authToken);
-            if (StringUtils.isBlank(userId) || userId.equalsIgnoreCase(
-                Constants.UNAUTHORIZED_USER)) {
+            if (StringUtils.isBlank(userId)) {
                 response.getParams().setErrMsg(Constants.USER_ID_DOESNT_EXIST);
                 response.setResponseCode(HttpStatus.BAD_REQUEST);
                 return response;
             }
+            String error = validateJoinPayload(request);
+            if (StringUtils.isNotBlank(error)) {
+                return returnErrorMsg(error, HttpStatus.BAD_REQUEST, response);
+            }
             String communityId = (String) request.get(Constants.COMMUNITY_ID);
-            Optional<CommunityEntity> optComment = communityEngagementRepository.findByCommunityIdAndIsActive(
+            Optional<CommunityEntity> optCommunity = communityEngagementRepository.findByCommunityIdAndIsActive(
                 communityId, true);
-            if (optComment == null || !optComment.isPresent() || optComment.get().getData()
+            if (optCommunity == null || !optCommunity.isPresent() || optCommunity.get().getData()
                 .isEmpty()) {
                 response.setResponseCode(HttpStatus.BAD_REQUEST);
-                response.getParams().setErr(error);
+                response.getParams().setErr(Constants.INVALID_COMMUNITY_ID);
                 return response;
             }
             Map<String, Object> propertyMap = new HashMap<>();
@@ -333,13 +331,36 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                     Constants.USER_COMMUNITY_TABLE, parameterisedMap);
                 cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD,
                     Constants.USER_COMMUNITY_LOOK_UP_TABLE, propertyMap);
+                return response;
             } else {
-                cassandraOperation.deleteRecord(Constants.KEYSPACE_SUNBIRD,
-                    Constants.USER_COMMUNITY_TABLE, propertyMap);
-                cassandraOperation.deleteRecord(Constants.KEYSPACE_SUNBIRD,
-                    Constants.USER_COMMUNITY_LOOK_UP_TABLE, propertyMap);
+                // Check if STATUS is false in the existing record
+                Map<String, Object> existingRecord = userCommunityDetails.get(
+                    0); // Fetch the first record
+                Boolean status = (Boolean) existingRecord.get(Constants.STATUS);
+                if (Boolean.FALSE.equals(status)) {
+                    Map<String, Object> updateUserCommunityDetails = new HashMap<>();
+                    Map<String, Object> updateUserCommunityLookUp = new HashMap<>();
+                    updateUserCommunityDetails.put(Constants.STATUS, true);
+                    updateUserCommunityDetails.put(Constants.LAST_UPDATED_AT,
+                        new Timestamp(Calendar.getInstance().getTime().getTime()));
+                    updateUserCommunityLookUp.put(Constants.STATUS, true);
+
+                    cassandraOperation.updateRecord(
+                        Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_TABLE,
+                        updateUserCommunityDetails, propertyMap);
+                    cassandraOperation.updateRecord(
+                        Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_LOOK_UP_TABLE,
+                        updateUserCommunityLookUp, propertyMap);
+                    return response;
+
+                } else {
+                    // STATUS is already true - return error
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                    response.getParams().setErr(Constants.ALREADY_JOINED_COMMUNITY);
+                    return response;
+                }
             }
-            return response;
+
 
         } catch (Exception e) {
             logger.error("Error while joining community:", e.getMessage(), e);
@@ -352,20 +373,22 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
     @Override
     public ApiResponse communitiesJoinedByUser(String authToken) {
         log.info("CommunityEngagementService:communitiesJoinedByUser:reading");
-        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_UPDATE);
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_USER_JOINED);
         try {
             String userId = accessTokenValidator.verifyUserToken(authToken);
-            if (StringUtils.isBlank(userId) || userId.equalsIgnoreCase(
-                Constants.UNAUTHORIZED_USER)) {
+            if (StringUtils.isBlank(userId)) {
                 response.getParams().setErrMsg(Constants.USER_ID_DOESNT_EXIST);
                 response.setResponseCode(HttpStatus.BAD_REQUEST);
                 return response;
             }
             Map<String, Object> propertyMap = new HashMap<>();
             propertyMap.put(Constants.USER_ID, userId);
+            List<String> fields = new ArrayList();
+            fields.add(Constants.COMMUNITY_ID);
+            fields.add(Constants.STATUS);
             List<Map<String, Object>> userCommunityDetails = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
                 Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_TABLE, propertyMap,
-                Collections.singletonList(Constants.COMMUNITY_ID), null);
+                fields, null);
             response.getResult().put(Constants.COMMUNITY_DETAILS,
                 objectMapper.convertValue(userCommunityDetails, new TypeReference<Object>() {
                 }));
@@ -383,26 +406,28 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
     @Override
     public ApiResponse listOfUsersJoined(String communityId, String authToken) {
         log.info("CommunityEngagementService:listOfUsersJoined::reading");
-        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_UPDATE);
-        if (StringUtils.isEmpty(communityId)) {
-            logger.error("Community Id not found");
-            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-            response.getParams().setErrMsg(Constants.ID_NOT_FOUND);
-            return response;
-        }
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_LIST_USER);
         try {
             String userId = accessTokenValidator.verifyUserToken(authToken);
-            if (StringUtils.isBlank(userId) || userId.equalsIgnoreCase(
-                Constants.UNAUTHORIZED_USER)) {
+            if (StringUtils.isBlank(userId)) {
                 response.getParams().setErrMsg(Constants.USER_ID_DOESNT_EXIST);
                 response.setResponseCode(HttpStatus.BAD_REQUEST);
                 return response;
             }
+            if (StringUtils.isEmpty(communityId)) {
+                logger.error("Community Id not found");
+                response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+                response.getParams().setErrMsg(Constants.ID_NOT_FOUND);
+                return response;
+            }
             Map<String, Object> propertyMap = new HashMap<>();
             propertyMap.put(Constants.COMMUNITY_ID, communityId);
+            List<String> fields = new ArrayList();
+            fields.add(Constants.USER_ID);
+            fields.add(Constants.STATUS);
             List<Map<String, Object>> userCommunityDetails = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
                 Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_LOOK_UP_TABLE, propertyMap,
-                Collections.singletonList(Constants.USER_ID), null);
+                fields, null);
             response.getResult().put(Constants.USER_DETAILS,
                 objectMapper.convertValue(userCommunityDetails, new TypeReference<Object>() {
                 }));
@@ -412,6 +437,63 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
         } catch (Exception e) {
             logger.error("Error while reading list of users joined in a  community:",
                 e.getMessage(), e);
+            throw new CustomException(Constants.ERROR, "error while processing",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+
+        }
+    }
+
+    @Override
+    public ApiResponse unJoinCommunity(Map<String, Object> request, String authToken) {
+        log.info("CommunityEngagementService:unJoinCommunity::unjoining");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_UNJOIN);
+        try {
+            String userId = accessTokenValidator.verifyUserToken(authToken);
+            if (StringUtils.isBlank(userId)) {
+                response.getParams().setErrMsg(Constants.USER_ID_DOESNT_EXIST);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+            String error = validateJoinPayload(request);
+            if (StringUtils.isNotBlank(error)) {
+                return returnErrorMsg(error, HttpStatus.BAD_REQUEST, response);
+            }
+            String communityId = (String) request.get(Constants.COMMUNITY_ID);
+            Optional<CommunityEntity> optCommunity = communityEngagementRepository.findByCommunityIdAndIsActive(
+                communityId, true);
+            if (optCommunity == null || !optCommunity.isPresent() || optCommunity.get().getData()
+                .isEmpty()) {
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                response.getParams().setErr(Constants.INVALID_COMMUNITY_ID);
+                return response;
+            }
+            Map<String, Object> propertyMap = new HashMap<>();
+            propertyMap.put(Constants.USER_ID, userId);
+            propertyMap.put(Constants.CommunityId, communityId);
+            List<Map<String, Object>> userCommunityDetails = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
+                Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_TABLE, propertyMap, null, 1);
+            if (!CollectionUtils.isEmpty(userCommunityDetails)) {
+                Map<String, Object> updateUserCommunityDetails = new HashMap<>();
+                updateUserCommunityDetails.put(Constants.STATUS, false);
+                Map<String, Object> updateUserCommunityLookUp = new HashMap<>();
+                updateUserCommunityDetails.put(Constants.STATUS, false);
+                updateUserCommunityDetails.put(Constants.LAST_UPDATED_AT,
+                    new Timestamp(Calendar.getInstance().getTime().getTime()));
+                updateUserCommunityLookUp.put(Constants.STATUS, false);
+                cassandraOperation.updateRecord(
+                    Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_TABLE,
+                    updateUserCommunityDetails, propertyMap);
+                cassandraOperation.updateRecord(
+                    Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_LOOK_UP_TABLE,
+                    updateUserCommunityLookUp, propertyMap);
+                return response;
+            } else {
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                response.getParams().setErr(Constants.NOT_JOINED_ALREADY);
+                return response;
+            }
+        } catch (Exception e) {
+            logger.error("Error while joining community:", e.getMessage(), e);
             throw new CustomException(Constants.ERROR, "error while processing",
                 HttpStatus.INTERNAL_SERVER_ERROR);
 

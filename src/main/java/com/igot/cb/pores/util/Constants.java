@@ -100,7 +100,12 @@ public class Constants {
     public static final String LAST_UPDATED_AT = "lastupdatedat";
     public static final String USER_DETAILS = "userDetails";
     public static String CommunityId = "communityId";
-    public static final String EXCEPTION_MSG_DELETE = "Exception occurred while deleting record from ";
+    public static final String ALREADY_JOINED_COMMUNITY = "This user is already joined this community";
+    public static final String API_COMMUNITY_JOIN = "api.community.join";
+    public static final String API_COMMUNITY_LIST_USER = "api.community.list.of.joined";
+    public static final String API_COMMUNITY_USER_JOINED = "api.community.list.of.communities.joined";
+    public static final String API_COMMUNITY_UNJOIN = "api.community.unjoin";
+    public static final String NOT_JOINED_ALREADY = "This user is not already joined";
 
     private Constants() {
     }
