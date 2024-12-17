@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "communityId": {
+      "type": "string"
+    },
+    "communityName": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 256
+    },
+    "description": {
+      "type": "string"
+    },
+    "communityAccessLevel": {
+      "type": "string"
+    },
+    "orgId": {
+      "type": "string"
+    },
+    "posterImageUrl": {
+      "type": "string"
+    },
+    "imageUrl": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "category": {
+      "type": "string"
+    },
+    "subCategory": {
+      "type": "string"
+    },
+    "countOfPeopleJoined": {
+      "type": "integer"
+    },
+    "communityTagId": {
+      "type": "string"
+    },
+    "communityCategoryId": {
+      "type": "string"
+    },
+    "communitySubCategoryId": {
+      "type": "string"
+    },
+    "createdOn": {
+      "type": "date",
+      "format": [
+        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+        "epoch_millis"
+      ]
+    },
+    "updatedOn": {
+      "type": "date",
+      "format": [
+        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+        "epoch_millis"
+      ]
+    },
+    "createdUserId": {
+      "type": "string"
+    },
+    "updatedUserId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "communityName",
+    "description",
+    "communityAccessLevel",
+    "orgId",
+    "posterImageUrl",
+    "imageUrl",
+    "tags",
+    "category",
+    "subCategory",
+    "createdUserId"
+  ],
+  "additionalProperties": false
+}

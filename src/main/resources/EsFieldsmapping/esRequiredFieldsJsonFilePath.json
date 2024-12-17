@@ -1,0 +1,67 @@
+{
+  "communityId": {
+    "type": "keyword"
+  },
+  "communityName": {
+    "type": "keyword"
+  },
+  "status": {
+    "type": "keyword"
+  },
+  "description": {
+    "type": "text"
+  },
+  "communityAccessLevel": {
+    "type": "keyword"
+  },
+  "orgId": {
+    "type": "keyword"
+  },
+  "posterImageUrl": {
+    "type": "keyword"
+  },
+  "imageUrl": {
+    "type": "keyword"
+  },
+  "tags": {
+    "type": "keyword"
+  },
+  "category": {
+    "type": "keyword"
+  },
+  "subCategory": {
+    "type": "keyword"
+  },
+  "countOfPeopleJoined": {
+    "type": "integer"
+  },
+  "communityTagId": {
+    "type": "keyword"
+  },
+  "communityCategoryId": {
+    "type": "keyword"
+  },
+  "communitySubCategoryId": {
+    "type": "keyword"
+  },
+  "createdOn": {
+    "type": "date",
+    "format": [
+      "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+      "epoch_millis"
+    ]
+  },
+  "updatedOn": {
+    "type": "date",
+    "format": [
+      "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+      "epoch_millis"
+    ]
+  },
+  "createdByUserId": {
+    "type": "keyword"
+  },
+  "updatedByUserId": {
+    "type": "keyword"
+  }
+}
