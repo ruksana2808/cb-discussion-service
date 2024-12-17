@@ -93,6 +93,14 @@ public class Constants {
     public static final String API_COMMUNITY_UPDATE = "api.community.update";
     public static final String UPDATED_BY = "updatedByUserId";
     public static final String CREATED_BY = "createdByUserId";
+    public static final String UNAUTHORIZED_USER = "Unauthorized";
+    public static final String USER_ID = "userId";
+    public static final String USER_COMMUNITY_TABLE = "user_community";
+    public static final String USER_COMMUNITY_LOOK_UP_TABLE = "community_user_lookup";
+    public static final String LAST_UPDATED_AT = "lastupdatedat";
+    public static final String USER_DETAILS = "userDetails";
+    public static String CommunityId = "communityId";
+    public static final String EXCEPTION_MSG_DELETE = "Exception occurred while deleting record from ";
 
     private Constants() {
     }
