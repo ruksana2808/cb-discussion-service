@@ -1,5 +1,8 @@
 package com.igot.cb.community.service.impl;
 
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.algorithms.Algorithm;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -9,6 +12,9 @@ import com.igot.cb.community.entity.CommunityEntity;
 import com.igot.cb.community.repository.CommunityEngagementRepository;
 import com.igot.cb.community.service.CommunityManagementService;
 import com.igot.cb.pores.cache.CacheService;
+import com.igot.cb.pores.dto.CustomResponse;
+import com.igot.cb.pores.elasticsearch.dto.SearchCriteria;
+import com.igot.cb.pores.elasticsearch.dto.SearchResult;
 import com.igot.cb.pores.elasticsearch.service.EsUtilService;
 import com.igot.cb.pores.exceptions.CustomException;
 import com.igot.cb.pores.util.*;
@@ -16,12 +22,15 @@ import com.igot.cb.transactional.cassandrautils.CassandraOperation;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.lucene.util.CollectionUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -58,6 +67,9 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
 
     @Autowired
     CassandraOperation cassandraOperation;
+
+    @Autowired
+    private RedisTemplate<String, SearchResult> redisTemplate;
 
     private Logger logger = LoggerFactory.getLogger(CommunityManagementServiceImpl.class);
 
@@ -244,7 +256,6 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             }
             if (communityDetails.has(Constants.COMMUNITY_ID) && !communityDetails.get(Constants.COMMUNITY_ID).isNull()) {
                 String communityId = communityDetails.get(Constants.COMMUNITY_ID).asText();
-                Timestamp currentTime = new Timestamp(System.currentTimeMillis());
                 Optional<CommunityEntity> communityEntityOptional = communityEngagementRepository.findByCommunityIdAndIsActive(communityId, true);
                 if (!communityEntityOptional.isPresent()) {
                     response.getParams().setErrMsg(Constants.INVALID_COMMUNITY_ID);
@@ -264,14 +275,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                         ((ObjectNode) dataNode).put(fieldName, communityDetails.get(fieldName));
                     }
                 }
-                communityEntityOptional.get().setUpdatedOn(currentTime);
-                ((ObjectNode) dataNode).put(Constants.UPDATED_ON, String.valueOf(currentTime));
-                ((ObjectNode) dataNode).put(Constants.UPDATED_BY, userId);
-                ((ObjectNode) dataNode).put(Constants.STATUS, Constants.ACTIVE);
-                communityEngagementRepository.save(communityEntityOptional.get());
-                Map<String, Object> map = objectMapper.convertValue(dataNode, Map.class);
-                esUtilService.updateDocument(Constants.INDEX_NAME, Constants.INDEX_TYPE, communityId, map, cbServerProperties.getElasticCommunityJsonPath());
-                cacheService.deleteCache(Constants.REDIS_KEY_PREFIX + communityId);
+                updateCommunityDetails(communityEntityOptional.get(),userId,dataNode);
                 response.getResult().put(Constants.RESPONSE,
                         "Updated the community with id: " + communityId);
                 return response;
@@ -331,6 +335,9 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                     Constants.USER_COMMUNITY_TABLE, parameterisedMap);
                 cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD,
                     Constants.USER_COMMUNITY_LOOK_UP_TABLE, propertyMap);
+                JsonNode dataNode = optCommunity.get().getData();
+                ((ObjectNode) dataNode).put(Constants.COUNT_OF_PEOPLE_JOINED, dataNode.get(Constants.COUNT_OF_PEOPLE_JOINED).asInt()+1);
+                updateCommunityDetails(optCommunity.get(),userId, dataNode);
                 return response;
             } else {
                 // Check if STATUS is false in the existing record
@@ -344,13 +351,15 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                     updateUserCommunityDetails.put(Constants.LAST_UPDATED_AT,
                         new Timestamp(Calendar.getInstance().getTime().getTime()));
                     updateUserCommunityLookUp.put(Constants.STATUS, true);
-
                     cassandraOperation.updateRecord(
                         Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_TABLE,
                         updateUserCommunityDetails, propertyMap);
                     cassandraOperation.updateRecord(
                         Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_LOOK_UP_TABLE,
                         updateUserCommunityLookUp, propertyMap);
+                    JsonNode dataNode = optCommunity.get().getData();
+                    ((ObjectNode) dataNode).put(Constants.COUNT_OF_PEOPLE_JOINED, dataNode.get(Constants.COUNT_OF_PEOPLE_JOINED).asInt()+1);
+                    updateCommunityDetails(optCommunity.get(),userId, dataNode);
                     return response;
 
                 } else {
@@ -360,14 +369,28 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                     return response;
                 }
             }
-
-
         } catch (Exception e) {
             logger.error("Error while joining community:", e.getMessage(), e);
             throw new CustomException(Constants.ERROR, "error while processing",
                 HttpStatus.INTERNAL_SERVER_ERROR);
 
         }
+    }
+
+    private void updateCommunityDetails(CommunityEntity communityEntity, String userId,
+        JsonNode dataNode) {
+        Timestamp currentTime = new Timestamp(System.currentTimeMillis());
+        communityEntity.setUpdatedOn(currentTime);
+        ((ObjectNode) dataNode).put(Constants.UPDATED_ON, String.valueOf(currentTime));
+        ((ObjectNode) dataNode).put(Constants.UPDATED_BY, userId);
+        ((ObjectNode) dataNode).put(Constants.STATUS, Constants.ACTIVE);
+        ((ObjectNode) dataNode).put(Constants.COMMUNITY_ID, communityEntity.getCommunityId());
+        communityEngagementRepository.save(communityEntity);
+        Map<String, Object> map = objectMapper.convertValue(dataNode, Map.class);
+        esUtilService.updateDocument(Constants.INDEX_NAME, Constants.INDEX_TYPE,
+            communityEntity.getCommunityId(), map,
+            cbServerProperties.getElasticCommunityJsonPath());
+        cacheService.putCache(Constants.REDIS_KEY_PREFIX, communityEntity.getData());
     }
 
     @Override
@@ -473,6 +496,14 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             List<Map<String, Object>> userCommunityDetails = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
                 Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_TABLE, propertyMap, null, 1);
             if (!CollectionUtils.isEmpty(userCommunityDetails)) {
+                Map<String, Object> existingRecord = userCommunityDetails.get(
+                    0); // Fetch the first record
+                Boolean status = (Boolean) existingRecord.get(Constants.STATUS);
+                if (Boolean.FALSE.equals((Boolean) existingRecord.get(Constants.STATUS))) {
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                    response.getParams().setErr(Constants.NOT_JOINED_ALREADY);
+                    return response;
+                }
                 Map<String, Object> updateUserCommunityDetails = new HashMap<>();
                 updateUserCommunityDetails.put(Constants.STATUS, false);
                 Map<String, Object> updateUserCommunityLookUp = new HashMap<>();
@@ -486,6 +517,10 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 cassandraOperation.updateRecord(
                     Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_LOOK_UP_TABLE,
                     updateUserCommunityLookUp, propertyMap);
+                JsonNode dataNode = optCommunity.get().getData();
+                ((ObjectNode) dataNode).put(Constants.COUNT_OF_PEOPLE_JOINED,
+                    dataNode.get(Constants.COUNT_OF_PEOPLE_JOINED).asInt() - 1);
+                updateCommunityDetails(optCommunity.get(), userId, dataNode);
                 return response;
             } else {
                 response.setResponseCode(HttpStatus.BAD_REQUEST);
@@ -498,6 +533,91 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 HttpStatus.INTERNAL_SERVER_ERROR);
 
         }
+    }
+
+    @Override
+    public ApiResponse searchCommunity(SearchCriteria searchCriteria) {
+        log.info("CommunityEngagementService:searchCommunity::inside method");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_SEARCH);
+        try {
+            SearchResult searchResult = new SearchResult();
+            if (searchCriteria.isOverrideCache()) {
+                return handleSearchAndCache(searchCriteria, response);
+            }
+            searchResult = redisTemplate.opsForValue()
+                .get(generateRedisJwtTokenKey(searchCriteria));
+            if (searchResult != null) {
+                log.info(
+                    "DiscussionServiceImpl::searchDiscussion:  search result fetched from redis");
+                response.getResult().put(Constants.SEARCH_RESULTS, searchResult);
+                createSuccessResponse(response);
+                return response;
+            }
+            String searchString = searchCriteria.getSearchString();
+            if (searchString != null && searchString.length() < 2) {
+                createErrorResponse(response, Constants.MINIMUM_CHARACTERS_NEEDED,
+                    HttpStatus.BAD_REQUEST, Constants.FAILED_CONST);
+                return response;
+            }
+            return handleSearchAndCache(searchCriteria, response);
+        } catch (Exception e) {
+            logger.error("Error occured while searching:", e);
+            throw new CustomException(Constants.ERROR, "error while processing",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private ApiResponse handleSearchAndCache(SearchCriteria searchCriteria, ApiResponse response) {
+        try {
+            SearchResult searchResult = esUtilService.searchDocuments(Constants.INDEX_NAME,
+                searchCriteria);
+            List<Map<String, Object>> discussions = objectMapper.convertValue(
+                searchResult.getData(),
+                new TypeReference<List<Map<String, Object>>>() {
+                }
+            );
+            redisTemplate.opsForValue().set(
+                generateRedisJwtTokenKey(searchCriteria),
+                searchResult,
+                cbServerProperties.getSearchResultRedisTtl(),
+                TimeUnit.SECONDS
+            );
+            response.getResult().put(Constants.SEARCH_RESULTS, searchResult);
+            createSuccessResponse(response);
+            return response;
+        } catch (Exception e) {
+            logger.error("Eaxceprtion occured while fetching and caching in search API:", e);
+            throw new CustomException(Constants.ERROR, "error while processing",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+
+    }
+
+    private void createSuccessResponse(ApiResponse response) {
+        response.setParams(new ApiRespParam());
+        response.getParams().setStatus(Constants.SUCCESS);
+        response.setResponseCode(HttpStatus.OK);
+    }
+
+    public void createErrorResponse(ApiResponse response, String errorMessage,
+        HttpStatus httpStatus, String status) {
+        response.setParams(new ApiRespParam());
+        response.getParams().setErrMsg(errorMessage);
+        response.getParams().setStatus(status);
+        response.setResponseCode(httpStatus);
+    }
+
+    private String generateRedisJwtTokenKey(SearchCriteria requestPayload) {
+        if (requestPayload != null) {
+            try {
+                String reqJsonString = objectMapper.writeValueAsString(requestPayload);
+                return JWT.create().withClaim(Constants.REQUEST_PAYLOAD, reqJsonString).sign(
+                    Algorithm.HMAC256(Constants.JWT_SECRET_KEY));
+            } catch (JsonProcessingException e) {
+                log.error("Error occurred while converting json object to json string", e);
+            }
+        }
+        return "";
     }
 
     private ApiResponse returnErrorMsg(String error, HttpStatus httpStatus, ApiResponse response) {

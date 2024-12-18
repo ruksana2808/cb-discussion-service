@@ -2,6 +2,7 @@ package com.igot.cb.community.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.igot.cb.community.service.CommunityManagementService;
+import com.igot.cb.pores.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.pores.util.ApiResponse;
 import com.igot.cb.pores.util.Constants;
 import java.util.Map;
@@ -71,6 +72,12 @@ public class CommunityController {
     public ResponseEntity<ApiResponse> unJoin(@RequestBody Map<String, Object> request,
         @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
         ApiResponse response = communityManagementService.unJoinCommunity(request, authToken);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    @PostMapping("/search")
+    public ResponseEntity<ApiResponse> search(@RequestBody SearchCriteria searchCriteria) {
+        ApiResponse response = communityManagementService.searchCommunity(searchCriteria);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 }

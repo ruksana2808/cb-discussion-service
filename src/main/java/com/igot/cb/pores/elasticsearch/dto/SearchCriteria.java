@@ -32,4 +32,6 @@ public class SearchCriteria {
     private List<String> facets;
 
     private Map<String, Object> query;
+
+    private boolean overrideCache;
 }

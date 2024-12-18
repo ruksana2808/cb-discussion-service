@@ -1,6 +1,7 @@
 package com.igot.cb.community.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.igot.cb.pores.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.pores.util.ApiResponse;
 import java.util.Map;
 
@@ -24,4 +25,6 @@ public interface CommunityManagementService {
     ApiResponse listOfUsersJoined(String communityId, String authToken);
 
     ApiResponse unJoinCommunity(Map<String, Object> request, String authToken);
+
+    ApiResponse searchCommunity(SearchCriteria searchCriteria);
 }

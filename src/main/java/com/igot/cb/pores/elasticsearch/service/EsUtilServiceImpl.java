@@ -148,10 +148,15 @@ public class EsUtilServiceImpl implements EsUtilService {
         if (searchString != null && searchString.length() > cbServerProperties.getSearchStringMaxRegexLength()) {
             throw new RuntimeException("The length of the search string exceeds the allowed maximum of " + cbServerProperties.getSearchStringMaxRegexLength() + " characters.");
         }
-        SearchSourceBuilder searchSourceBuilder = buildSearchSourceBuilder(searchCriteria);
-        SearchRequest searchRequest = new SearchRequest(esIndexName);
-        searchRequest.source(searchSourceBuilder);
         try {
+            SearchResult searchResult = new SearchResult();
+            boolean indexExists = elasticsearchClient.indices().exists(new GetIndexRequest(esIndexName), RequestOptions.DEFAULT);
+            if (!indexExists) {
+                return searchResult;
+            }
+            SearchSourceBuilder searchSourceBuilder = buildSearchSourceBuilder(searchCriteria);
+            SearchRequest searchRequest = new SearchRequest(esIndexName);
+            searchRequest.source(searchSourceBuilder);
             if (searchSourceBuilder != null) {
                 int pageNumber = searchCriteria.getPageNumber();
                 int pageSize = searchCriteria.getPageSize();
@@ -166,7 +171,6 @@ public class EsUtilServiceImpl implements EsUtilService {
             List<Map<String, Object>> paginatedResult = extractPaginatedResult(paginatedSearchResponse);
             Map<String, List<FacetDTO>> fieldAggregations =
                     extractFacetData(paginatedSearchResponse, searchCriteria);
-            SearchResult searchResult = new SearchResult();
             searchResult.setData(objectMapper.valueToTree(paginatedResult));
             searchResult.setFacets(fieldAggregations);
             searchResult.setTotalCount(paginatedSearchResponse.getHits().getTotalHits().value);
