@@ -3,11 +3,15 @@ package com.igot.cb.transactional.cassandrautils;
 import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.Session;
+import com.datastax.driver.core.Statement;
 import com.datastax.driver.core.querybuilder.Clause;
 import com.datastax.driver.core.querybuilder.QueryBuilder;
 import com.datastax.driver.core.querybuilder.Select;
 import com.datastax.driver.core.querybuilder.Select.Builder;
 import com.datastax.driver.core.querybuilder.Select.Where;
+import com.datastax.driver.core.querybuilder.Update;
+import com.datastax.driver.core.querybuilder.Update.Assignments;
 import com.igot.cb.pores.util.ApiResponse;
 import com.igot.cb.pores.util.Constants;
 import org.apache.commons.collections.CollectionUtils;
@@ -159,44 +163,30 @@ public class CassandraOperationImpl implements CassandraOperation {
     }
 
     @Override
-    public Map<String,Object> updateRecord(
-            String keyspaceName, String tableName, Map<String, Object> request) {
-        long startTime = System.currentTimeMillis();
-        logger.debug("Cassandra Service updateRecord method started at ==" + startTime);
-        Map<String,Object> response = new HashMap<>();
-        String query = getUpdateQueryStatement(keyspaceName, tableName, request);
+    public Map<String, Object> updateRecord(String keyspaceName, String tableName, Map<String, Object> updateAttributes,
+        Map<String, Object> compositeKey) {
+        Map<String, Object> response = new HashMap<>();
+        Statement updateQuery = null;
         try {
-            PreparedStatement statement = connectionManager.getSession(keyspaceName).prepare(query);
-            Object[] array = new Object[request.size()];
-            int i = 0;
-            String str = "";
-            int index = query.lastIndexOf(Constants.SET.trim());
-            str = query.substring(index + 4);
-            str = str.replace(Constants.EQUAL_WITH_QUE_MARK, "");
-            str = str.replace(Constants.WHERE_ID, "");
-            str = str.replace(Constants.SEMICOLON, "");
-            String[] arr = str.split(",");
-            for (String key : arr) {
-                array[i++] = request.get(key.trim());
-            }
-            array[i] = request.get(Constants.ID);
-            BoundStatement boundStatement = statement.bind(array);
-            connectionManager.getSession(keyspaceName).execute(boundStatement);
+            Session session = connectionManager.getSession(keyspaceName);
+            Update update = QueryBuilder.update(keyspaceName, tableName);
+            Assignments assignments = update.with();
+            Update.Where where = update.where();
+            updateAttributes.entrySet().stream().forEach(x -> {
+                assignments.and(QueryBuilder.set(x.getKey(), x.getValue()));
+            });
+            compositeKey.entrySet().stream().forEach(x -> {
+                where.and(QueryBuilder.eq(x.getKey(), x.getValue()));
+            });
+            updateQuery = where;
+            session.execute(updateQuery);
             response.put(Constants.RESPONSE, Constants.SUCCESS);
-            if (tableName.equalsIgnoreCase(Constants.USER)) {
-                logger.info("Cassandra Service updateRecord in user table :" + request);
-            }
         } catch (Exception e) {
-            if (e.getMessage().contains(Constants.UNKNOWN_IDENTIFIER)) {
-                logger.error(
-                        Constants.EXCEPTION_MSG_UPDATE + tableName + " : " + e.getMessage(), e);
-                String errMsg = String.format("Exception occurred while updating record to to %s %s", tableName, e.getMessage());
-                response.put(Constants.RESPONSE, Constants.FAILED);
-                response.put(Constants.ERROR_MESSAGE, errMsg);
-            }
-            logger.error(Constants.EXCEPTION_MSG_UPDATE + tableName + " : " + e.getMessage(), e);
-        } finally {
-            logQueryElapseTime("updateRecord", startTime, query);
+            String errMsg = String.format("Exception occurred while updating record to %s %s", tableName, e.getMessage());
+            logger.error(errMsg);
+            response.put(Constants.RESPONSE, Constants.FAILED);
+            response.put(Constants.ERROR_MESSAGE, errMsg);
+            throw e;
         }
         return response;
     }
