@@ -80,4 +80,11 @@ public class CommunityController {
         ApiResponse response = communityManagementService.searchCommunity(searchCriteria);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    @PostMapping("/category/create")
+    public ResponseEntity<ApiResponse> communityCtreate(@RequestBody JsonNode communityDetails,
+        @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
+        ApiResponse response = communityManagementService.categoryCreate(communityDetails, authToken);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

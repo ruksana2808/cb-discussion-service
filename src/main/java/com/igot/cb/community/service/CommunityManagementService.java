@@ -27,4 +27,6 @@ public interface CommunityManagementService {
     ApiResponse unJoinCommunity(Map<String, Object> request, String authToken);
 
     ApiResponse searchCommunity(SearchCriteria searchCriteria);
+
+    ApiResponse categoryCreate(JsonNode communityDetails, String authToken);
 }

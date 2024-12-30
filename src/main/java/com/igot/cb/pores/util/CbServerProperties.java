@@ -5,8 +5,6 @@ import lombok.Setter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.util.Arrays;
-import java.util.List;
 
 @Component
 @Getter
@@ -21,4 +19,7 @@ public class CbServerProperties {
 
     @Value("${elastic.required.field.community.json.path}")
     private String elasticCommunityJsonPath;
+
+    @Value("${elastic.required.field.community.category.json.path}")
+    private String elasticCommunityCategoryJsonPath;
 }
