@@ -18,14 +18,14 @@
       "type": "integer",
       "minimum": 1
     },
-    "createdOn": {
+    "createdAt": {
       "type": "date",
       "format": [
         "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
         "epoch_millis"
       ]
     },
-    "updatedOn": {
+    "lastUpdatedAt": {
       "type": "date",
       "format": [
         "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",

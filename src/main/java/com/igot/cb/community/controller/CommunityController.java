@@ -87,4 +87,31 @@ public class CommunityController {
         ApiResponse response = communityManagementService.categoryCreate(communityDetails, authToken);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    @GetMapping("/category/read/{categoryId}")
+    public ResponseEntity<ApiResponse> readCategory(@PathVariable String categoryId,
+        @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
+        ApiResponse response = communityManagementService.readCategory(categoryId, authToken);
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
+    @DeleteMapping("/category/delete/{categoryId}")
+    public ResponseEntity<ApiResponse> deleteCategory(@PathVariable String categoryId,
+        @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
+        ApiResponse response = communityManagementService.deleteCategory(categoryId, authToken);
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
+    @PutMapping("/category/update")
+    public ResponseEntity<ApiResponse> updateCategory(@RequestBody JsonNode categoryDetails,
+        @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
+        ApiResponse response = communityManagementService.updateCategory(categoryDetails, authToken);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    @GetMapping("/category/list")
+    public ResponseEntity<ApiResponse> readCategory() {
+        ApiResponse response = communityManagementService.listOfCategory();
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
 }

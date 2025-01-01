@@ -6,7 +6,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.igot.cb.authentication.util.AccessTokenValidator;
 import com.igot.cb.community.entity.CommunityCategory;
@@ -573,7 +572,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
     @Override
     public ApiResponse categoryCreate(JsonNode categoryDetails, String authToken) {
         log.info("CommunityEngagementService:categoryCreate:creating");
-        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_CREATE);
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CATEGORY_CRAETE);
         String userId = accessTokenValidator.verifyUserToken(authToken);
         if (StringUtils.isBlank(userId)) {
             response.getParams().setStatus(Constants.FAILED);
@@ -649,14 +648,206 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 return response;
 
             }
-
-
         } catch (Exception e) {
-            log.error("error occured while creating commmunity:" + e);
+            log.error("error occured while creating category:" + e);
             throw new CustomException("error while processing", e.getMessage(),
                 HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
+    }
+
+    @Override
+    public ApiResponse readCategory(String categoryId, String authToken) {
+        log.info("CommunityEngagementService:readCategory:reading community");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CATEGORY_READ);
+        String userId = accessTokenValidator.verifyUserToken(authToken);
+        if (StringUtils.isBlank(userId)) {
+            logger.error("Id not found");
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.getParams().setErrMsg(Constants.ID_NOT_FOUND);
+            return response;
+        }
+        if (StringUtils.isEmpty(categoryId)) {
+            logger.error("categoryId not found");
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.getParams().setErrMsg(Constants.ID_NOT_FOUND);
+            return response;
+        }
+        try {
+            Optional<CommunityCategory> categoryOptional = Optional.ofNullable(
+                categoryRepository.findByCategoryIdAndIsActive(
+                    Integer.valueOf(categoryId), true));
+            if (categoryOptional.isPresent()) {
+                CommunityCategory category = categoryOptional.get();
+                log.info("Record coming from postgres db");
+                response.getParams().setErrMsg(Constants.SUCCESSFULLY_READING);
+                response.getResult().put(Constants.COMMUNITY_DETAILS,
+                    objectMapper.convertValue(category, new TypeReference<Object>() {
+                    }));
+                return response;
+            } else {
+                logger.error("Invalid Id: {}", categoryId);
+                response.setResponseCode(HttpStatus.NOT_FOUND);
+                response.getParams().setErrMsg(Constants.INVALID_CATEGORY_ID);
+                return response;
+            }
+
+        } catch (Exception e) {
+            logger.error("Error while reading category {}: {}", categoryId, e.getMessage(), e);
+            throw new CustomException(Constants.ERROR, "error while processing",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Override
+    public ApiResponse deleteCategory(String categoryId, String authToken) {
+        log.info("CommunityEngagementService:deleteCategory:deleting community");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CATEGORY_DELETE);
+        String userId = accessTokenValidator.verifyUserToken(authToken);
+        if (StringUtils.isBlank(userId)) {
+            logger.error("Id not found");
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.getParams().setErrMsg(Constants.ID_NOT_FOUND);
+            return response;
+        }
+        if (StringUtils.isEmpty(categoryId)) {
+            logger.error("categoryId not found");
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.getParams().setErrMsg(Constants.ID_NOT_FOUND);
+            return response;
+        }
+        try {
+            Optional<CommunityCategory> categoryOptional = Optional.ofNullable(
+                categoryRepository.findByCategoryIdAndIsActive(
+                    Integer.valueOf(categoryId), true));
+            if (categoryOptional.isPresent()) {
+                CommunityCategory communityCategory = categoryOptional.get();
+                Timestamp currentTimestamp = new Timestamp(System.currentTimeMillis());
+                communityCategory.setIsActive(false);
+                communityCategory.setLastUpdatedAt(currentTimestamp);
+                categoryRepository.save(communityCategory);
+                JsonNode esSave = objectMapper.valueToTree(communityCategory);
+                ((ObjectNode) esSave).put(Constants.STATUS, Constants.INACTIVE);
+                ((ObjectNode) esSave).put(Constants.UPDATED_ON, String.valueOf(currentTimestamp));
+                Map<String, Object> map = objectMapper.convertValue(esSave, Map.class);
+                esUtilService.updateDocument(Constants.CATEGORY_INDEX_NAME, Constants.INDEX_TYPE,
+                    categoryId, map, cbServerProperties.getElasticCommunityCategoryJsonPath());
+                response.getResult().put(Constants.RESPONSE,
+                    "Deleted the category with id: " + categoryId);
+                return response;
+
+            } else {
+                logger.error("Invalid categoryId: {}", categoryId);
+                response.setResponseCode(HttpStatus.NOT_FOUND);
+                response.getParams().setErrMsg(Constants.INVALID_CATEGORY_ID);
+                return response;
+            }
+
+        } catch (Exception e) {
+            logger.error("Error while deleting category {}: {}", categoryId, e.getMessage(), e);
+            throw new CustomException(Constants.ERROR, "error while processing",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Override
+    public ApiResponse updateCategory(JsonNode categoryDetails, String authToken) {
+        log.info("CommunityEngagementService:updateCategory:updating category");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CATEGORY_UPDATE);
+        String userId = accessTokenValidator.verifyUserToken(authToken);
+        if (StringUtils.isBlank(userId)) {
+            logger.error("Id not found");
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.getParams().setErrMsg(Constants.ID_NOT_FOUND);
+            return response;
+        }
+        try {
+            validatePayload(Constants.CATEGORY_PAYLOAD_VALIDATION_FILE, categoryDetails);
+        } catch (CustomException e) {
+            log.error("Validation failed: {}", e.getMessage());
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErrMsg(e.getMessage());
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return response;
+        }
+        try {
+            if (categoryDetails.has(Constants.CATEGORY_ID) && !categoryDetails.get(
+                Constants.CATEGORY_ID).isNull()) {
+                Optional<CommunityCategory> categoryOptional = Optional.ofNullable(
+                    categoryRepository.findByCategoryIdAndIsActive(
+                        categoryDetails.get(Constants.CATEGORY_ID).asInt(), true));
+                if (!categoryOptional.isPresent()) {
+                    response.getParams().setErrMsg(Constants.INVALID_CATEGORY_ID);
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                    return response;
+                }
+                CommunityCategory communityCategory = objectMapper.convertValue(categoryDetails,
+                    CommunityCategory.class);
+                Timestamp currentTimestamp = new Timestamp(System.currentTimeMillis());
+                communityCategory.setIsActive(true);
+                communityCategory.setLastUpdatedAt(currentTimestamp);
+                communityCategory.setCreatedAt(categoryOptional.get().getCreatedAt());
+                categoryRepository.save(communityCategory);
+                JsonNode esSave = objectMapper.valueToTree(communityCategory);
+                ((ObjectNode) esSave).put(Constants.STATUS, Constants.ACTIVE);
+                ((ObjectNode) esSave).put(Constants.UPDATED_ON, String.valueOf(currentTimestamp));
+                Map<String, Object> map = objectMapper.convertValue(esSave, Map.class);
+                esUtilService.updateDocument(Constants.CATEGORY_INDEX_NAME, Constants.INDEX_TYPE,
+                    String.valueOf(categoryDetails.get(Constants.CATEGORY_ID)), map,
+                    cbServerProperties.getElasticCommunityCategoryJsonPath());
+                response.getResult().put(Constants.RESPONSE,
+                    "Updated the category with id: " + categoryDetails.get(Constants.CATEGORY_ID));
+                return response;
+            } else {
+                response.getParams().setErrMsg(Constants.COMMUNITY_ID_NOT_FOUND);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+
+        } catch (Exception e) {
+            logger.error("Error while updating category {}: {}",
+                categoryDetails.has(Constants.CATEGORY_ID), e.getMessage(), e);
+            throw new CustomException(Constants.ERROR, "error while processing",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Override
+    public ApiResponse listOfCategory() {
+        log.info("CommunityEngagementService:listOfCategory:listing");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CATEGORY_LIST);
+        try {
+            String cachedJson = cacheService.getCache(Constants.CATEGORY_LIST_REDIS_KEY_PREFIX);
+            if (StringUtils.isNotEmpty(cachedJson)) {
+                log.info("Record coming from redis cache");
+                response.getParams().setErrMsg(Constants.SUCCESSFULLY_READING);
+                response
+                    .getResult()
+                    .put(Constants.CATEGORY_DETAILS,
+                        objectMapper.readValue(cachedJson, new TypeReference<Object>() {
+                        }));
+                return response;
+            }
+            List<CommunityCategory> optListCategories = categoryRepository.findByParentIdAndIsActive(
+                0, true);
+            if (optListCategories.isEmpty()) {
+                response.getParams().setErrMsg(Constants.CATEGORIES_NOT_FOUND);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+            // Convert the entire list to a JSON-compatible structure and set it in the response
+            List<Object> categoryDetailsList = objectMapper.convertValue(optListCategories,
+                new TypeReference<List<Object>>() {
+                });
+            response.getResult().put(Constants.CATEGORY_DETAILS, categoryDetailsList);
+            cacheService.putCache(Constants.CATEGORY_LIST_REDIS_KEY_PREFIX, categoryDetailsList);
+            return response;
+        } catch (Exception e) {
+            logger.error("Error while listing the categories:"
+                , e.getMessage(), e);
+            throw new CustomException(Constants.ERROR, "error while processing",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
     private CommunityCategory persistCategoryInPimary(JsonNode categoryDetails, Integer parentId,
