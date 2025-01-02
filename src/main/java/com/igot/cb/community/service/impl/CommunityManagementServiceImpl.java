@@ -583,7 +583,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
         try {
             validatePayload(Constants.CATEGORY_PAYLOAD_VALIDATION_FILE, categoryDetails);
         } catch (CustomException e) {
-            log.error("Validation failed: {}", e);
+            log.error("Validation failed: {}", e.getMessage(), e);
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErrMsg(e.getMessage());
             response.setResponseCode(HttpStatus.BAD_REQUEST);
@@ -649,7 +649,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
 
             }
         } catch (Exception e) {
-            log.error("error occured while creating category:" + e);
+            log.error("error occured while creating category: {}", e.getMessage(), e);
             throw new CustomException("error while processing", e.getMessage(),
                 HttpStatus.INTERNAL_SERVER_ERROR);
         }
@@ -764,7 +764,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
         try {
             validatePayload(Constants.CATEGORY_PAYLOAD_VALIDATION_FILE, categoryDetails);
         } catch (CustomException e) {
-            log.error("Validation failed: {}", e);
+            log.error("Validation failed: {}", e.getMessage(), e);
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErrMsg(e.getMessage());
             response.setResponseCode(HttpStatus.BAD_REQUEST);
@@ -843,7 +843,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             cacheService.putCache(Constants.CATEGORY_LIST_REDIS_KEY_PREFIX, categoryDetailsList);
             return response;
         } catch (Exception e) {
-            logger.error("Error while listing the categories:"
+            logger.error("Error while listing the categories: {}"
                 , e.getMessage(), e);
             throw new CustomException(Constants.ERROR, "error while processing",
                 HttpStatus.INTERNAL_SERVER_ERROR);
@@ -912,7 +912,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 return JWT.create().withClaim(Constants.REQUEST_PAYLOAD, reqJsonString).sign(
                     Algorithm.HMAC256(Constants.JWT_SECRET_KEY));
             } catch (JsonProcessingException e) {
-                log.error("Error occurred while converting json object to json string", e);
+                log.error("Error occurred while converting json object to json string: {}", e.getMessage(), e);
             }
         }
         return "";
