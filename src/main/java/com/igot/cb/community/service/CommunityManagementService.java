@@ -27,4 +27,14 @@ public interface CommunityManagementService {
     ApiResponse unJoinCommunity(Map<String, Object> request, String authToken);
 
     ApiResponse searchCommunity(SearchCriteria searchCriteria);
+
+    ApiResponse categoryCreate(JsonNode communityDetails, String authToken);
+
+    ApiResponse readCategory(String categoryId, String authToken);
+
+    ApiResponse deleteCategory(String categoryId, String authToken);
+
+    ApiResponse updateCategory(JsonNode categoryDetails, String authToken);
+
+    ApiResponse listOfCategory();
 }

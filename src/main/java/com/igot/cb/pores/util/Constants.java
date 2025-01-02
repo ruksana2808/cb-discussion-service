@@ -112,6 +112,26 @@ public class Constants {
     public static final String SEARCH_RESULTS = "search_results";
     public static final String MINIMUM_CHARACTERS_NEEDED= "Minimum 3 characters are required to search";
     public static final String FAILED_CONST = "FAILED";
+    public static final String CATEGORY_ID = "categoryId";
+    public static final String PARENT_ID = "parentId";
+    public static final String CATEGORY_NAME = "categoryName";
+    public static final String ALREADY_PRESENT_SUB_CATEGORY = "This sub category is already created under this category";
+    public static final String ALREADY_CATEGORY_PRESENT = "This Category is already present";
+    public static final String DESCRIPTION = "description";
+    public static final String CREATED_AT = "createdAt";
+    public static final String UPDATED_AT = "lastUpdatedAt";
+    public static final String CATEGORY_INDEX_NAME = "community_category_entity";
+    public static final String SUB_CATEGORY = "subCategory";
+    public static final String CATEGORY_PAYLOAD_VALIDATION_FILE = "/payloadValidation/categoryValidationFile.json";
+    public static final String API_CATEGORY_READ = "api.community.category.read";
+    public static final String API_CATEGORY_CRAETE = "api.community.category.create";
+    public static final String API_CATEGORY_UPDATE = "api.community.category.update";
+    public static final String API_CATEGORY_DELETE = "api.community.category.delete";
+    public static final String API_CATEGORY_LIST = "api.community.category.list";
+    public static final String INVALID_CATEGORY_ID = "Invalid Category Id";
+    public static final String CATEGORIES_NOT_FOUND = "Categories are not found";
+    public static final String CATEGORY_DETAILS = "categoryDetails";
+    public static final String CATEGORY_LIST_REDIS_KEY_PREFIX = "community_category_list";
 
     private Constants() {
     }

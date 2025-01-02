@@ -8,11 +8,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.igot.cb.authentication.util.AccessTokenValidator;
+import com.igot.cb.community.entity.CommunityCategory;
 import com.igot.cb.community.entity.CommunityEntity;
+import com.igot.cb.community.repository.CommunityCategoryRepository;
 import com.igot.cb.community.repository.CommunityEngagementRepository;
 import com.igot.cb.community.service.CommunityManagementService;
 import com.igot.cb.pores.cache.CacheService;
-import com.igot.cb.pores.dto.CustomResponse;
 import com.igot.cb.pores.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.pores.elasticsearch.dto.SearchResult;
 import com.igot.cb.pores.elasticsearch.service.EsUtilService;
@@ -23,10 +24,8 @@ import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.lucene.util.CollectionUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -70,6 +69,9 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
 
     @Autowired
     private RedisTemplate<String, SearchResult> redisTemplate;
+
+    @Autowired
+    private CommunityCategoryRepository categoryRepository;
 
     private Logger logger = LoggerFactory.getLogger(CommunityManagementServiceImpl.class);
 
@@ -567,6 +569,302 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
         }
     }
 
+    @Override
+    public ApiResponse categoryCreate(JsonNode categoryDetails, String authToken) {
+        log.info("CommunityEngagementService:categoryCreate:creating");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CATEGORY_CRAETE);
+        String userId = accessTokenValidator.verifyUserToken(authToken);
+        if (StringUtils.isBlank(userId)) {
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErrMsg(Constants.USER_ID_DOESNT_EXIST);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return response;
+        }
+        try {
+            validatePayload(Constants.CATEGORY_PAYLOAD_VALIDATION_FILE, categoryDetails);
+        } catch (CustomException e) {
+            log.error("Validation failed: {}", e.getMessage(), e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErrMsg(e.getMessage());
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return response;
+        }
+        Timestamp currentTimestamp = new Timestamp(System.currentTimeMillis());
+        try {
+            if (categoryDetails.has(Constants.PARENT_ID)) {
+                Optional<CommunityCategory> communityCatgoryOptional = Optional.ofNullable(
+                    categoryRepository.findByParentIdAndCategoryNameAndIsActive(
+                        categoryDetails.get(Constants.PARENT_ID).asInt(),
+                        categoryDetails.get(Constants.CATEGORY_NAME).asText(), true));
+                if (communityCatgoryOptional.isPresent()) {
+                    response.getParams().setStatus(Constants.FAILED);
+                    response.getParams().setErrMsg(Constants.ALREADY_PRESENT_SUB_CATEGORY);
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                    return response;
+                }
+                CommunityCategory communityCategorySaved = persistCategoryInPrimary(categoryDetails,
+                    categoryDetails.get(Constants.PARENT_ID).asInt(), userId, currentTimestamp);
+                ((ObjectNode) categoryDetails).put(Constants.UPDATED_AT,
+                    String.valueOf(currentTimestamp));
+                ((ObjectNode) categoryDetails).put(Constants.UPDATED_BY, userId);
+                Map<String, Object> communityDetailsMap = objectMapper.convertValue(categoryDetails,
+                    Map.class);
+                esUtilService.updateDocument(Constants.CATEGORY_INDEX_NAME, Constants.INDEX_TYPE,
+                    String.valueOf(communityCategorySaved.getCategoryId()), communityDetailsMap,
+                    cbServerProperties.getElasticCommunityCategoryJsonPath());
+                response.getResult().put(Constants.STATUS, Constants.SUCCESSFULLY_CREATED);
+                response.getResult()
+                    .put(Constants.CATEGORY_ID, communityCategorySaved.getCategoryId());
+                return response;
+
+            } else {
+                Optional<CommunityCategory> communityCatgoryOptional = Optional.ofNullable(
+                    categoryRepository.findByCategoryNameAndIsActive(
+                        categoryDetails.get(Constants.CATEGORY_NAME).asText(), true));
+                if (communityCatgoryOptional.isPresent()) {
+                    response.getParams().setStatus(Constants.FAILED);
+                    response.getParams().setErrMsg(Constants.ALREADY_CATEGORY_PRESENT);
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                    return response;
+                }
+                CommunityCategory savedCategory = persistCategoryInPrimary(categoryDetails, 0,
+                    userId, currentTimestamp);
+                ((ObjectNode) categoryDetails).put(Constants.CATEGORY_ID,
+                    savedCategory.getCategoryId());
+                ((ObjectNode) categoryDetails).put(Constants.STATUS, Constants.ACTIVE);
+                ((ObjectNode) categoryDetails).put(Constants.CREATED_AT,
+                    String.valueOf(currentTimestamp));
+                ((ObjectNode) categoryDetails).put(Constants.UPDATED_AT,
+                    String.valueOf(currentTimestamp));
+                ((ObjectNode) categoryDetails).put(Constants.CREATED_BY, userId);
+                ((ObjectNode) categoryDetails).put(Constants.UPDATED_BY, userId);
+                Map<String, Object> communityDetailsMap = objectMapper.convertValue(categoryDetails,
+                    Map.class);
+                esUtilService.addDocument(Constants.CATEGORY_INDEX_NAME, Constants.INDEX_TYPE,
+                    String.valueOf(savedCategory.getCategoryId()), communityDetailsMap,
+                    cbServerProperties.getElasticCommunityCategoryJsonPath());
+                response.getResult().put(Constants.STATUS, Constants.SUCCESSFULLY_CREATED);
+                response.getResult().put(Constants.CATEGORY_ID, savedCategory.getCategoryId());
+                return response;
+
+            }
+        } catch (Exception e) {
+            log.error("error occured while creating category: {}", e.getMessage(), e);
+            throw new CustomException("error while processing", e.getMessage(),
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+
+    }
+
+    @Override
+    public ApiResponse readCategory(String categoryId, String authToken) {
+        log.info("CommunityEngagementService:readCategory:reading community");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CATEGORY_READ);
+        String userId = accessTokenValidator.verifyUserToken(authToken);
+        if (StringUtils.isBlank(userId)) {
+            logger.error("Id not found");
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.getParams().setErrMsg(Constants.ID_NOT_FOUND);
+            return response;
+        }
+        if (StringUtils.isEmpty(categoryId)) {
+            logger.error("categoryId not found");
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.getParams().setErrMsg(Constants.ID_NOT_FOUND);
+            return response;
+        }
+        try {
+            Optional<CommunityCategory> categoryOptional = Optional.ofNullable(
+                categoryRepository.findByCategoryIdAndIsActive(
+                    Integer.valueOf(categoryId), true));
+            if (categoryOptional.isPresent()) {
+                CommunityCategory category = categoryOptional.get();
+                log.info("Record coming from postgres db");
+                response.getParams().setErrMsg(Constants.SUCCESSFULLY_READING);
+                response.getResult().put(Constants.COMMUNITY_DETAILS,
+                    objectMapper.convertValue(category, new TypeReference<Object>() {
+                    }));
+                return response;
+            } else {
+                logger.error("Invalid Id: {}", categoryId);
+                response.setResponseCode(HttpStatus.NOT_FOUND);
+                response.getParams().setErrMsg(Constants.INVALID_CATEGORY_ID);
+                return response;
+            }
+
+        } catch (Exception e) {
+            logger.error("Error while reading category {}: {}", categoryId, e.getMessage(), e);
+            throw new CustomException(Constants.ERROR, "error while processing",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Override
+    public ApiResponse deleteCategory(String categoryId, String authToken) {
+        log.info("CommunityEngagementService:deleteCategory:deleting community");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CATEGORY_DELETE);
+        String userId = accessTokenValidator.verifyUserToken(authToken);
+        if (StringUtils.isBlank(userId)) {
+            logger.error("Id not found");
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.getParams().setErrMsg(Constants.ID_NOT_FOUND);
+            return response;
+        }
+        if (StringUtils.isEmpty(categoryId)) {
+            logger.error("categoryId not found");
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.getParams().setErrMsg(Constants.ID_NOT_FOUND);
+            return response;
+        }
+        try {
+            Optional<CommunityCategory> categoryOptional = Optional.ofNullable(
+                categoryRepository.findByCategoryIdAndIsActive(
+                    Integer.valueOf(categoryId), true));
+            if (categoryOptional.isPresent()) {
+                CommunityCategory communityCategory = categoryOptional.get();
+                Timestamp currentTimestamp = new Timestamp(System.currentTimeMillis());
+                communityCategory.setIsActive(false);
+                communityCategory.setLastUpdatedAt(currentTimestamp);
+                categoryRepository.save(communityCategory);
+                JsonNode esSave = objectMapper.valueToTree(communityCategory);
+                ((ObjectNode) esSave).put(Constants.STATUS, Constants.INACTIVE);
+                ((ObjectNode) esSave).put(Constants.UPDATED_ON, String.valueOf(currentTimestamp));
+                Map<String, Object> map = objectMapper.convertValue(esSave, Map.class);
+                esUtilService.updateDocument(Constants.CATEGORY_INDEX_NAME, Constants.INDEX_TYPE,
+                    categoryId, map, cbServerProperties.getElasticCommunityCategoryJsonPath());
+                response.getResult().put(Constants.RESPONSE,
+                    "Deleted the category with id: " + categoryId);
+                return response;
+
+            } else {
+                logger.error("Invalid categoryId: {}", categoryId);
+                response.setResponseCode(HttpStatus.NOT_FOUND);
+                response.getParams().setErrMsg(Constants.INVALID_CATEGORY_ID);
+                return response;
+            }
+
+        } catch (Exception e) {
+            logger.error("Error while deleting category {}: {}", categoryId, e.getMessage(), e);
+            throw new CustomException(Constants.ERROR, "error while processing",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Override
+    public ApiResponse updateCategory(JsonNode categoryDetails, String authToken) {
+        log.info("CommunityEngagementService:updateCategory:updating category");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CATEGORY_UPDATE);
+        String userId = accessTokenValidator.verifyUserToken(authToken);
+        if (StringUtils.isBlank(userId)) {
+            logger.error("Id not found");
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.getParams().setErrMsg(Constants.ID_NOT_FOUND);
+            return response;
+        }
+        try {
+            validatePayload(Constants.CATEGORY_PAYLOAD_VALIDATION_FILE, categoryDetails);
+        } catch (CustomException e) {
+            log.error("Validation failed: {}", e.getMessage(), e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErrMsg(e.getMessage());
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return response;
+        }
+        try {
+            if (categoryDetails.has(Constants.CATEGORY_ID) && !categoryDetails.get(
+                Constants.CATEGORY_ID).isNull()) {
+                Optional<CommunityCategory> categoryOptional = Optional.ofNullable(
+                    categoryRepository.findByCategoryIdAndIsActive(
+                        categoryDetails.get(Constants.CATEGORY_ID).asInt(), true));
+                if (!categoryOptional.isPresent()) {
+                    response.getParams().setErrMsg(Constants.INVALID_CATEGORY_ID);
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                    return response;
+                }
+                CommunityCategory communityCategory = objectMapper.convertValue(categoryDetails,
+                    CommunityCategory.class);
+                Timestamp currentTimestamp = new Timestamp(System.currentTimeMillis());
+                communityCategory.setIsActive(true);
+                communityCategory.setLastUpdatedAt(currentTimestamp);
+                communityCategory.setCreatedAt(categoryOptional.get().getCreatedAt());
+                categoryRepository.save(communityCategory);
+                JsonNode esSave = objectMapper.valueToTree(communityCategory);
+                ((ObjectNode) esSave).put(Constants.STATUS, Constants.ACTIVE);
+                ((ObjectNode) esSave).put(Constants.UPDATED_ON, String.valueOf(currentTimestamp));
+                Map<String, Object> map = objectMapper.convertValue(esSave, Map.class);
+                esUtilService.updateDocument(Constants.CATEGORY_INDEX_NAME, Constants.INDEX_TYPE,
+                    String.valueOf(categoryDetails.get(Constants.CATEGORY_ID)), map,
+                    cbServerProperties.getElasticCommunityCategoryJsonPath());
+                response.getResult().put(Constants.RESPONSE,
+                    "Updated the category with id: " + categoryDetails.get(Constants.CATEGORY_ID));
+                return response;
+            } else {
+                response.getParams().setErrMsg(Constants.COMMUNITY_ID_NOT_FOUND);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+
+        } catch (Exception e) {
+            logger.error("Error while updating category {}: {}",
+                categoryDetails.has(Constants.CATEGORY_ID), e.getMessage(), e);
+            throw new CustomException(Constants.ERROR, "error while processing",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Override
+    public ApiResponse listOfCategory() {
+        log.info("CommunityEngagementService:listOfCategory:listing");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CATEGORY_LIST);
+        try {
+            String cachedJson = cacheService.getCache(Constants.CATEGORY_LIST_REDIS_KEY_PREFIX);
+            if (StringUtils.isNotEmpty(cachedJson)) {
+                log.info("Record coming from redis cache");
+                response.getParams().setErrMsg(Constants.SUCCESSFULLY_READING);
+                response
+                    .getResult()
+                    .put(Constants.CATEGORY_DETAILS,
+                        objectMapper.readValue(cachedJson, new TypeReference<Object>() {
+                        }));
+                return response;
+            }
+            List<CommunityCategory> optListCategories = categoryRepository.findByParentIdAndIsActive(
+                0, true);
+            if (optListCategories.isEmpty()) {
+                response.getParams().setErrMsg(Constants.CATEGORIES_NOT_FOUND);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+            // Convert the entire list to a JSON-compatible structure and set it in the response
+            List<Object> categoryDetailsList = objectMapper.convertValue(optListCategories,
+                new TypeReference<List<Object>>() {
+                });
+            response.getResult().put(Constants.CATEGORY_DETAILS, categoryDetailsList);
+            cacheService.putCache(Constants.CATEGORY_LIST_REDIS_KEY_PREFIX, categoryDetailsList);
+            return response;
+        } catch (Exception e) {
+            logger.error("Error while listing the categories: {}"
+                , e.getMessage(), e);
+            throw new CustomException(Constants.ERROR, "error while processing",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private CommunityCategory persistCategoryInPrimary(JsonNode categoryDetails, Integer parentId,
+        String userId, Timestamp currentTimestamp) {
+        log.info("CommunityEngagementService:persistCategoryInPimaryAndEs:saving");
+        CommunityCategory communityCategory = new CommunityCategory();
+        communityCategory.setCategoryName(categoryDetails.get(Constants.CATEGORY_NAME).asText());
+        communityCategory.setDescription(categoryDetails.get(Constants.DESCRIPTION).asText());
+        communityCategory.setParentId(parentId);
+        communityCategory.setCreatedAt(currentTimestamp);
+        // Save to the repository and fetch the generated ID
+        return categoryRepository.save(communityCategory);
+
+    }
+
+
+
     private ApiResponse handleSearchAndCache(SearchCriteria searchCriteria, ApiResponse response) {
         try {
             SearchResult searchResult = esUtilService.searchDocuments(Constants.INDEX_NAME,
@@ -614,7 +912,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 return JWT.create().withClaim(Constants.REQUEST_PAYLOAD, reqJsonString).sign(
                     Algorithm.HMAC256(Constants.JWT_SECRET_KEY));
             } catch (JsonProcessingException e) {
-                log.error("Error occurred while converting json object to json string", e);
+                log.error("Error occurred while converting json object to json string: {}", e.getMessage(), e);
             }
         }
         return "";
