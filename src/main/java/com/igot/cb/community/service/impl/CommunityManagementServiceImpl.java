@@ -583,7 +583,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
         try {
             validatePayload(Constants.CATEGORY_PAYLOAD_VALIDATION_FILE, categoryDetails);
         } catch (CustomException e) {
-            log.error("Validation failed: {}", e.getMessage());
+            log.error("Validation failed: {}", e);
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErrMsg(e.getMessage());
             response.setResponseCode(HttpStatus.BAD_REQUEST);
@@ -602,7 +602,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                     response.setResponseCode(HttpStatus.BAD_REQUEST);
                     return response;
                 }
-                CommunityCategory communityCategorySaved = persistCategoryInPimary(categoryDetails,
+                CommunityCategory communityCategorySaved = persistCategoryInPrimary(categoryDetails,
                     categoryDetails.get(Constants.PARENT_ID).asInt(), userId, currentTimestamp);
                 ((ObjectNode) categoryDetails).put(Constants.UPDATED_AT,
                     String.valueOf(currentTimestamp));
@@ -627,7 +627,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                     response.setResponseCode(HttpStatus.BAD_REQUEST);
                     return response;
                 }
-                CommunityCategory savedCategory = persistCategoryInPimary(categoryDetails, 0,
+                CommunityCategory savedCategory = persistCategoryInPrimary(categoryDetails, 0,
                     userId, currentTimestamp);
                 ((ObjectNode) categoryDetails).put(Constants.CATEGORY_ID,
                     savedCategory.getCategoryId());
@@ -764,7 +764,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
         try {
             validatePayload(Constants.CATEGORY_PAYLOAD_VALIDATION_FILE, categoryDetails);
         } catch (CustomException e) {
-            log.error("Validation failed: {}", e.getMessage());
+            log.error("Validation failed: {}", e);
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErrMsg(e.getMessage());
             response.setResponseCode(HttpStatus.BAD_REQUEST);
@@ -850,7 +850,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
         }
     }
 
-    private CommunityCategory persistCategoryInPimary(JsonNode categoryDetails, Integer parentId,
+    private CommunityCategory persistCategoryInPrimary(JsonNode categoryDetails, Integer parentId,
         String userId, Timestamp currentTimestamp) {
         log.info("CommunityEngagementService:persistCategoryInPimaryAndEs:saving");
         CommunityCategory communityCategory = new CommunityCategory();
@@ -858,7 +858,6 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
         communityCategory.setDescription(categoryDetails.get(Constants.DESCRIPTION).asText());
         communityCategory.setParentId(parentId);
         communityCategory.setCreatedAt(currentTimestamp);
-        communityCategory.setLastUpdatedAt(currentTimestamp);
         // Save to the repository and fetch the generated ID
         return categoryRepository.save(communityCategory);
 
