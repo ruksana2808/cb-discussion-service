@@ -115,7 +115,7 @@ public class CommunityController {
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
-    @GetMapping("/sucategory/list")
+    @PostMapping("/subcategory/list")
     public ResponseEntity<ApiResponse> readSubCategory(@RequestBody SearchCriteria searchCriteria) {
         ApiResponse response = communityManagementService.listOfSubCategory(searchCriteria);
         return new ResponseEntity<>(response, HttpStatus.OK);

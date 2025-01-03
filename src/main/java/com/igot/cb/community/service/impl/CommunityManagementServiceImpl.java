@@ -545,7 +545,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
         try {
             SearchResult searchResult = new SearchResult();
             if (searchCriteria.isOverrideCache()) {
-                return handleSearchAndCache(searchCriteria, response, Constants.INDEX_NAME);
+                return handleSearchAndCache(searchCriteria, response);
             }
             searchResult = redisTemplate.opsForValue()
                 .get(generateRedisJwtTokenKey(searchCriteria));
@@ -562,7 +562,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                     HttpStatus.BAD_REQUEST, Constants.FAILED_CONST);
                 return response;
             }
-            return handleSearchAndCache(searchCriteria, response, Constants.INDEX_NAME);
+            return handleSearchAndCache(searchCriteria, response);
         } catch (Exception e) {
             logger.error("Error occured while searching:", e);
             throw new CustomException(Constants.ERROR, "error while processing",
@@ -855,29 +855,62 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
     public ApiResponse listOfSubCategory(SearchCriteria searchCriteria) {
         log.info("CommunityEngagementService:listOfSubCategory:listing");
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_SUB_CATEGORY_LIST);
-        try{
+        try {
             // Check if filterCriteriaMap exists and contains the categoryId key with a non-null value
-            SearchResult searchResult = redisTemplate.opsForValue()
-                .get(generateRedisJwtTokenKey(searchCriteria));
-            if (searchResult != null) {
-                log.info(
-                    "CommunityEngagementService::listOfSubCategory:  search result fetched from redis");
-                response.getResult().put(Constants.SEARCH_RESULTS, searchResult);
-                createSuccessResponse(response);
-                return response;
-            }
             if (searchCriteria != null
                 && searchCriteria.getFilterCriteriaMap() != null
                 && searchCriteria.getFilterCriteriaMap().containsKey(Constants.CATEGORY_ID)
                 && searchCriteria.getFilterCriteriaMap().get(Constants.CATEGORY_ID) != null) {
+
+                Optional<CommunityCategory> categoryOptional = Optional.ofNullable(
+                    categoryRepository.findByCategoryIdAndIsActive(
+                        (Integer) searchCriteria.getFilterCriteriaMap().get(Constants.CATEGORY_ID),
+                        true));
+                if (!categoryOptional.isPresent()) {
+                    response.getParams().setErrMsg(Constants.INVALID_CATEGORY_ID);
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                    return response;
+                }
+                searchCriteria.getFilterCriteriaMap().put(Constants.PARENT_ID,
+                    searchCriteria.getFilterCriteriaMap().get(Constants.CATEGORY_ID));
                 searchCriteria.getFilterCriteriaMap().put(Constants.STATUS, Constants.ACTIVE);
+                // Remove CATEGORY_ID from the map
+                searchCriteria.getFilterCriteriaMap().remove(Constants.CATEGORY_ID);
+                SearchResult searchResult = redisTemplate.opsForValue()
+                    .get(generateRedisJwtTokenKey(searchCriteria));
+                if (searchResult != null) {
+                    log.info(
+                        "CommunityEngagementService::listOfSubCategory:  search result fetched from redis");
+                    response.getResult().put(Constants.CATEGORY_DETAILS,
+                        objectMapper.convertValue(categoryOptional.get(),
+                            new TypeReference<Map<String, Object>>() {
+                            }));
+                    createSuccessResponse(response);
+                    response.getResult().put(Constants.SUB_CATEGORIES, searchResult);
+                    createSuccessResponse(response);
+                    return response;
+                }
                 String searchString = searchCriteria.getSearchString();
                 if (searchString != null && searchString.length() < 2) {
                     createErrorResponse(response, Constants.MINIMUM_CHARACTERS_NEEDED,
                         HttpStatus.BAD_REQUEST, Constants.FAILED_CONST);
                     return response;
                 }
-                return handleSearchAndCache(searchCriteria, response, Constants.CATEGORY_INDEX_NAME);
+                searchResult = esUtilService.searchDocuments(Constants.CATEGORY_INDEX_NAME,
+                    searchCriteria);
+                redisTemplate.opsForValue().set(
+                    generateRedisJwtTokenKey(searchCriteria),
+                    searchResult,
+                    cbServerProperties.getSearchResultRedisTtl(),
+                    TimeUnit.SECONDS
+                );
+                response.getResult().put(Constants.CATEGORY_DETAILS,
+                    objectMapper.convertValue(categoryOptional.get(),
+                        new TypeReference<Map<String, Object>>() {
+                        }));
+                createSuccessResponse(response);
+                response.getResult().put(Constants.SUB_CATEGORIES, searchResult);
+                return response;
 
             } else {
                 response.getParams().setErrMsg(Constants.INVALID_CATEGORY_ID);
@@ -909,9 +942,9 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
 
 
 
-    private ApiResponse handleSearchAndCache(SearchCriteria searchCriteria, ApiResponse response, String indexName) {
+    private ApiResponse handleSearchAndCache(SearchCriteria searchCriteria, ApiResponse response) {
         try {
-            SearchResult searchResult = esUtilService.searchDocuments(indexName,
+            SearchResult searchResult = esUtilService.searchDocuments(Constants.INDEX_NAME,
                 searchCriteria);
             List<Map<String, Object>> discussions = objectMapper.convertValue(
                 searchResult.getData(),
@@ -928,7 +961,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             createSuccessResponse(response);
             return response;
         } catch (Exception e) {
-            logger.error("Exception occured while fetching and caching in search API:", e);
+            logger.error("Eaxceprtion occured while fetching and caching in search API:", e);
             throw new CustomException(Constants.ERROR, "error while processing",
                 HttpStatus.INTERNAL_SERVER_ERROR);
         }

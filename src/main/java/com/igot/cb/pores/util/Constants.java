@@ -133,6 +133,7 @@ public class Constants {
     public static final String CATEGORY_DETAILS = "categoryDetails";
     public static final String CATEGORY_LIST_REDIS_KEY_PREFIX = "community_category_list";
     public static final String API_SUB_CATEGORY_LIST = "api.community.sub.category.list";
+    public static final String SUB_CATEGORIES = "subCategories";
 
     private Constants() {
     }
