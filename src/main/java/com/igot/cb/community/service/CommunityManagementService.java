@@ -37,4 +37,6 @@ public interface CommunityManagementService {
     ApiResponse updateCategory(JsonNode categoryDetails, String authToken);
 
     ApiResponse listOfCategory();
+
+    ApiResponse listOfSubCategory(SearchCriteria searchCriteria);
 }
