@@ -605,8 +605,14 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 }
                 CommunityCategory communityCategorySaved = persistCategoryInPrimary(categoryDetails,
                     categoryDetails.get(Constants.PARENT_ID).asInt(), userId, currentTimestamp);
+                ((ObjectNode) categoryDetails).put(Constants.CATEGORY_ID,
+                    communityCategorySaved.getCategoryId());
+                ((ObjectNode) categoryDetails).put(Constants.STATUS, Constants.ACTIVE);
+                ((ObjectNode) categoryDetails).put(Constants.CREATED_AT,
+                    String.valueOf(currentTimestamp));
                 ((ObjectNode) categoryDetails).put(Constants.UPDATED_AT,
                     String.valueOf(currentTimestamp));
+                ((ObjectNode) categoryDetails).put(Constants.CREATED_BY, userId);
                 ((ObjectNode) categoryDetails).put(Constants.UPDATED_BY, userId);
                 Map<String, Object> communityDetailsMap = objectMapper.convertValue(categoryDetails,
                     Map.class);
