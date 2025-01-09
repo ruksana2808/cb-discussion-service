@@ -541,6 +541,43 @@ public class EsUtilServiceImpl implements EsUtilService {
         }
     }
 
+    @Override
+    public List<Map<String, Object>> matchAll(String esIndexName , List<Integer> parentIds) throws IOException{
+        try {
+            List<Map<String, Object>> documents = new ArrayList<>();
+            boolean indexExists = elasticsearchClient.indices().exists(new GetIndexRequest(esIndexName), RequestOptions.DEFAULT);
+            if (!indexExists) {
+                return documents;
+            }
+            SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+            sourceBuilder.query(QueryBuilders.boolQuery()
+                .must(QueryBuilders.matchAllQuery()) // Match all documents
+                .filter(QueryBuilders.termsQuery(Constants.PARENT_ID, parentIds)) // Filter where parentId is in the list
+                .filter(QueryBuilders.termQuery(Constants.STATUS, Constants.ACTIVE)) // Filter where status is 'active'
+            );
+            sourceBuilder.size(10000);
+            SearchRequest searchRequest = new SearchRequest(esIndexName);
+            searchRequest.source(sourceBuilder);
+            // Specify the fields to fetch
+            sourceBuilder.fetchSource(new String[]{Constants.CATEGORY_ID, Constants.CATEGORY_NAME, Constants.PARENT_ID}, null);
+
+            searchRequest.source(sourceBuilder);
+
+            SearchResponse searchResponse = elasticsearchClient.search(searchRequest, RequestOptions.DEFAULT);
+
+            for (SearchHit hit : searchResponse.getHits()) {
+                documents.add(hit.getSourceAsMap());
+            }
+            return documents;
+
+        } catch (Exception e) {
+            logger.error("Error while listing all categoires with subCategories in Es matchAll method:"
+                , e.getMessage(), e);
+            throw new CustomException(Constants.ERROR, "error while processing",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
 
 }
 

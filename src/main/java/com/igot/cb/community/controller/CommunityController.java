@@ -110,7 +110,7 @@ public class CommunityController {
     }
 
     @GetMapping("/category/list")
-    public ResponseEntity<ApiResponse> readCategory(@RequestBody JsonNode categoryDetails) {
+    public ResponseEntity<ApiResponse> readCategory() {
         ApiResponse response = communityManagementService.listOfCategory();
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
@@ -118,6 +118,12 @@ public class CommunityController {
     @PostMapping("/subcategory/list")
     public ResponseEntity<ApiResponse> readSubCategory(@RequestBody SearchCriteria searchCriteria) {
         ApiResponse response = communityManagementService.listOfSubCategory(searchCriteria);
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
+    @GetMapping("/category/listAll")
+    public ResponseEntity<ApiResponse> readAllCategory() {
+        ApiResponse response = communityManagementService.lisAllCategoryWithSubCat();
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 }

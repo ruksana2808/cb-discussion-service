@@ -26,4 +26,6 @@ public interface EsUtilService {
 
   public BulkResponse saveAll(String esIndexName, String type, List<JsonNode> entities) throws IOException;
 
+  List<Map<String, Object>> matchAll(String esIndexName , List<Integer> parentIds) throws IOException;
+
 }

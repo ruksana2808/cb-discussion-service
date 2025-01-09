@@ -24,6 +24,7 @@ import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -622,6 +623,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 response.getResult().put(Constants.STATUS, Constants.SUCCESSFULLY_CREATED);
                 response.getResult()
                     .put(Constants.CATEGORY_ID, communityCategorySaved.getCategoryId());
+                cacheService.deleteCache(Constants.CATEGORY_LIST_ALL_REDIS_KEY_PREFIX);
                 return response;
 
             } else {
@@ -652,6 +654,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                     cbServerProperties.getElasticCommunityCategoryJsonPath());
                 response.getResult().put(Constants.STATUS, Constants.SUCCESSFULLY_CREATED);
                 response.getResult().put(Constants.CATEGORY_ID, savedCategory.getCategoryId());
+                cacheService.deleteCache(Constants.CATEGORY_LIST_ALL_REDIS_KEY_PREFIX);
                 return response;
 
             }
@@ -741,6 +744,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                     categoryId, map, cbServerProperties.getElasticCommunityCategoryJsonPath());
                 response.getResult().put(Constants.RESPONSE,
                     "Deleted the category with id: " + categoryId);
+                cacheService.deleteCache(Constants.CATEGORY_LIST_ALL_REDIS_KEY_PREFIX);
                 return response;
 
             } else {
@@ -804,6 +808,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                     cbServerProperties.getElasticCommunityCategoryJsonPath());
                 response.getResult().put(Constants.RESPONSE,
                     "Updated the category with id: " + categoryDetails.get(Constants.CATEGORY_ID));
+                cacheService.deleteCache(Constants.CATEGORY_LIST_ALL_REDIS_KEY_PREFIX);
                 return response;
             } else {
                 response.getParams().setErrMsg(Constants.COMMUNITY_ID_NOT_FOUND);
@@ -927,6 +932,80 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
 
         } catch (Exception e) {
             logger.error("Error while listing the sub-categories:"
+                , e.getMessage(), e);
+            throw new CustomException(Constants.ERROR, "error while processing",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Override
+    public ApiResponse lisAllCategoryWithSubCat() {
+        log.info("CommunityEngagementService:lisAllCategoryWithSubCat:listing");
+        ApiResponse response = ProjectUtil.createDefaultResponse(
+            Constants.API_SUB_CATEGORY_LIST_ALL);
+        try {
+            String cachedJson = cacheService.getCache(Constants.CATEGORY_LIST_ALL_REDIS_KEY_PREFIX);
+            if (StringUtils.isNotEmpty(cachedJson)) {
+                log.info("Record coming from redis cache");
+                Map<String, Object> cachedData;
+
+                cachedData = objectMapper.readValue(cachedJson,
+                    new TypeReference<Map<String, Object>>() {
+                    });
+
+                response.getParams().setErrMsg(Constants.SUCCESSFULLY_READING);
+                response
+                    .setResult(cachedData);
+                return response;
+            }
+            List<CommunityCategory> optListCategories = categoryRepository.findByParentIdAndIsActive(
+                0, true);
+            if (optListCategories.isEmpty()) {
+                response.getParams().setErrMsg(Constants.CATEGORIES_NOT_FOUND);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+            }
+            List<Integer> categoryIds = optListCategories.stream()
+                .map(CommunityCategory::getCategoryId) // Assuming getId() retrieves the ID
+                .collect(Collectors.toList());
+            List<Map<String, Object>> documents = esUtilService.matchAll(
+                Constants.CATEGORY_INDEX_NAME, categoryIds);
+            if (!documents.isEmpty()) {
+                // Create a result map to hold all categories
+                Map<String, Object> result = new HashMap<>();
+
+                // Process each parent category
+                optListCategories.forEach(parentCategory -> {
+                    // Filter subcategories related to the current parent category
+                    List<Map<String, Object>> subCategories = documents.stream()
+                        .filter(doc -> doc.get(Constants.PARENT_ID) != null &&
+                            doc.get(Constants.PARENT_ID).equals(parentCategory.getCategoryId()))
+                        .collect(Collectors.toList());
+
+                    // Build the parent category map
+                    Map<String, Object> parentCategoryMap = new HashMap<>();
+                    parentCategoryMap.put(Constants.CATEGORY_ID, parentCategory.getCategoryId());
+                    parentCategoryMap.put(Constants.CATEGORY_NAME,
+                        parentCategory.getCategoryName());
+                    parentCategoryMap.put(Constants.SUB_CATEGORIES, subCategories);
+
+                    // Add to result using categoryName as the key
+                    result.put(parentCategory.getCategoryName(), parentCategoryMap);
+                });
+                cacheService.putCache(Constants.CATEGORY_LIST_ALL_REDIS_KEY_PREFIX, result);
+
+                // Set the result in the response
+                response.setResponseCode(HttpStatus.OK);
+                response.setResult(result);
+                return response;
+            } else {
+                response.getParams().setErrMsg(Constants.CATEGORIES_NOT_FOUND);
+                response.setResponseCode(HttpStatus.NOT_FOUND);
+                return response;
+            }
+
+
+        } catch (Exception e) {
+            logger.error("Error while listing all categoires with subCategories:"
                 , e.getMessage(), e);
             throw new CustomException(Constants.ERROR, "error while processing",
                 HttpStatus.INTERNAL_SERVER_ERROR);
