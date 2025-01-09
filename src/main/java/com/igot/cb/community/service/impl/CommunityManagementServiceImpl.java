@@ -962,7 +962,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 0, true);
             if (optListCategories.isEmpty()) {
                 response.getParams().setErrMsg(Constants.CATEGORIES_NOT_FOUND);
-                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                response.setResponseCode(HttpStatus.NOT_FOUND);
             }
             List<Integer> categoryIds = optListCategories.stream()
                 .map(CommunityCategory::getCategoryId) // Assuming getId() retrieves the ID
