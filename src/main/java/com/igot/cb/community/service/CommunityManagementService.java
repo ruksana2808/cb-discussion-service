@@ -39,4 +39,6 @@ public interface CommunityManagementService {
     ApiResponse listOfCategory();
 
     ApiResponse listOfSubCategory(SearchCriteria searchCriteria);
+
+    ApiResponse lisAllCategoryWithSubCat();
 }

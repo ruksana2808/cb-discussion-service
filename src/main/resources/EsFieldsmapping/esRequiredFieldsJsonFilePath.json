@@ -63,5 +63,8 @@
   },
   "updatedByUserId": {
     "type": "keyword"
+  },
+  "communityGuideLines": {
+    "type": "keyword"
   }
 }

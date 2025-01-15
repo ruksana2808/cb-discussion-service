@@ -21,12 +21,15 @@ import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.delete.DeleteResponse;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.index.IndexResponse;
+import org.elasticsearch.action.search.ClearScrollRequest;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.action.search.SearchScrollRequest;
 import org.elasticsearch.action.support.WriteRequest;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.client.indices.GetIndexRequest;
+import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.query.*;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.search.SearchHit;
@@ -540,6 +543,86 @@ public class EsUtilServiceImpl implements EsUtilService {
                 HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
+    @Override
+    public List<Map<String, Object>> matchAll(String esIndexName, List<Integer> parentIds)
+        throws IOException {
+        List<Map<String, Object>> documents = new ArrayList<>();
+        String scrollId = null;
+
+        try {
+            // Check if the index exists
+            boolean indexExists = elasticsearchClient.indices()
+                .exists(new GetIndexRequest(esIndexName), RequestOptions.DEFAULT);
+            if (!indexExists) {
+                return documents;
+            }
+
+            // Build the query
+            SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+            sourceBuilder.query(QueryBuilders.boolQuery()
+                    .must(QueryBuilders.matchAllQuery()) // Match all documents
+                    .filter(QueryBuilders.termsQuery(Constants.PARENT_ID,
+                        parentIds)) // Filter where parentId is in the list
+                    .filter(QueryBuilders.termQuery(Constants.STATUS, Constants.ACTIVE))
+                // Filter where status is 'active'
+            );
+            // Specify the fields to fetch
+            sourceBuilder.fetchSource(
+                new String[]{Constants.CATEGORY_ID, Constants.CATEGORY_NAME, Constants.PARENT_ID},
+                null);
+            sourceBuilder.size(500); // Fetch in batches of 500
+
+            // Create search request with scroll
+            SearchRequest searchRequest = new SearchRequest(esIndexName);
+            searchRequest.source(sourceBuilder);
+            searchRequest.scroll(TimeValue.timeValueMinutes(5)); // Set scroll timeout
+
+            // Execute initial search request
+            SearchResponse searchResponse = elasticsearchClient.search(searchRequest,
+                RequestOptions.DEFAULT);
+            scrollId = searchResponse.getScrollId();
+
+            // Process hits in the initial response
+            processSearchHits(searchResponse, documents);
+
+            // Fetch subsequent batches using the scroll API
+            while (searchResponse.getHits().getHits().length > 0) {
+                SearchScrollRequest scrollRequest = new SearchScrollRequest(scrollId);
+                scrollRequest.scroll(TimeValue.timeValueMinutes(5));
+                searchResponse = elasticsearchClient.scroll(scrollRequest, RequestOptions.DEFAULT);
+                scrollId = searchResponse.getScrollId();
+
+                processSearchHits(searchResponse, documents);
+            }
+
+        } catch (Exception e) {
+            logger.error(
+                "Error while listing all categories with subCategories in matchAll method: {}",
+                e.getMessage(), e);
+            throw new CustomException(Constants.ERROR, "Error while processing",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        } finally {
+            // Clear scroll
+            if (scrollId != null) {
+                ClearScrollRequest clearScrollRequest = new ClearScrollRequest();
+                clearScrollRequest.addScrollId(scrollId);
+                elasticsearchClient.clearScroll(clearScrollRequest, RequestOptions.DEFAULT);
+            }
+        }
+
+        return documents;
+    }
+
+    /**
+     * Helper method to process search hits and add them to the documents list.
+     */
+    private void processSearchHits(SearchResponse searchResponse, List<Map<String, Object>> documents) {
+        for (SearchHit hit : searchResponse.getHits()) {
+            documents.add(hit.getSourceAsMap());
+        }
+    }
+
 
 
 }

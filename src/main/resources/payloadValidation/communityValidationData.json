@@ -44,10 +44,10 @@
       "type": "string"
     },
     "communityCategoryId": {
-      "type": "string"
+      "type": "integer"
     },
     "communitySubCategoryId": {
-      "type": "string"
+      "type": "integer"
     },
     "createdOn": {
       "type": "date",
@@ -67,6 +67,9 @@
       "type": "string"
     },
     "updatedUserId": {
+      "type": "string"
+    },
+    "communityGuideLines": {
       "type": "string"
     }
   },
