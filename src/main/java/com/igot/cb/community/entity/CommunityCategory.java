@@ -46,4 +46,7 @@ public class CommunityCategory {
   @Column(name = "last_updated_at")
   private Timestamp lastUpdatedAt;
 
+  @Column(name = "department_id")
+  private String departmentId;
+
 }

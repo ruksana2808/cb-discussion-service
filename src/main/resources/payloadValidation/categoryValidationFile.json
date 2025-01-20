@@ -37,11 +37,15 @@
     },
     "updatedUserId": {
       "type": "string"
+    },
+    "departmentId": {
+      "type": "string"
     }
   },
   "required": [
     "categoryName",
-    "description"
+    "description",
+    "departmentId"
   ],
   "additionalProperties": false
 }

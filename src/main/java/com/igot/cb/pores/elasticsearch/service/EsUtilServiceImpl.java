@@ -253,6 +253,8 @@ public class EsUtilServiceImpl implements EsUtilService {
                                             field + Constants.KEYWORD, ((ArrayList<?>) value).toArray()));
                         } else if (value instanceof String) {
                             boolQueryBuilder.must(QueryBuilders.termsQuery(field + Constants.KEYWORD, value));
+                        } else if (value instanceof Integer) {
+                            boolQueryBuilder.must(QueryBuilders.termQuery(field, value));
                         } else if (value instanceof Map) {
                             Map<String, Object> nestedMap = (Map<String, Object>) value;
                             if (isRangeQuery(nestedMap)) {

@@ -3,10 +3,15 @@
     "type": "keyword"
   },
   "categoryName": {
-    "type": "keyword"
+    "type": "text",
+    "fields": {
+      "raw": {
+        "type": "keyword"
+      }
+    }
   },
   "parentId": {
-    "type": "keyword"
+    "type": "integer"
   },
   "description": {
     "type": "text"
@@ -35,6 +40,9 @@
     "type": "keyword"
   },
   "subCategory": {
+    "type": "keyword"
+  },
+  "departmentId": {
     "type": "keyword"
   }
 }
