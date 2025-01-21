@@ -595,12 +595,14 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
         try {
             if (categoryDetails.has(Constants.PARENT_ID)) {
                 Optional<CommunityCategory> communityCatgoryOptional = Optional.ofNullable(
-                    categoryRepository.findByParentIdAndCategoryNameAndIsActive(
+                    categoryRepository.findByParentIdAndCategoryNameAndDepartmentIdAndIsActive(
                         categoryDetails.get(Constants.PARENT_ID).asInt(),
-                        categoryDetails.get(Constants.CATEGORY_NAME).asText(), true));
+                        categoryDetails.get(Constants.CATEGORY_NAME).asText(),
+                        categoryDetails.get(Constants.DEPARTMENT_ID).asText(), true));
                 if (communityCatgoryOptional.isPresent()) {
                     response.getParams().setStatus(Constants.FAILED);
-                    response.getParams().setErrMsg(Constants.ALREADY_PRESENT_SUB_CATEGORY);
+                    response.getParams()
+                        .setErrMsg(Constants.ALREADY_PRESENT_COMMUNITY_UNDER_THIS_TOPIC);
                     response.setResponseCode(HttpStatus.BAD_REQUEST);
                     return response;
                 }
@@ -1020,6 +1022,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
         communityCategory.setDescription(categoryDetails.get(Constants.DESCRIPTION).asText());
         communityCategory.setParentId(parentId);
         communityCategory.setCreatedAt(currentTimestamp);
+        communityCategory.setDepartmentId(categoryDetails.get(Constants.DEPARTMENT_ID).asText());
         // Save to the repository and fetch the generated ID
         return categoryRepository.save(communityCategory);
 
@@ -1029,7 +1032,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
 
     private ApiResponse handleSearchAndCache(SearchCriteria searchCriteria, ApiResponse response) {
         try {
-            SearchResult searchResult = esUtilService.searchDocuments(Constants.INDEX_NAME,
+            SearchResult searchResult = esUtilService.searchDocuments(Constants.CATEGORY_INDEX_NAME,
                 searchCriteria);
             List<Map<String, Object>> discussions = objectMapper.convertValue(
                 searchResult.getData(),

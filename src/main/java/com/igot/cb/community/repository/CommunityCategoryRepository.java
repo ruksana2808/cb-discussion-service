@@ -13,4 +13,6 @@ public interface CommunityCategoryRepository extends JpaRepository<CommunityCate
   CommunityCategory findByCategoryNameAndIsActive(String categoryName, boolean isActive);
 
   List<CommunityCategory> findByParentIdAndIsActive(int parentId, boolean isActive);
+
+  CommunityCategory findByParentIdAndCategoryNameAndDepartmentIdAndIsActive(int parentId, String categoryName, String departmentId, boolean isActive);
 }
