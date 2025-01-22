@@ -31,10 +31,7 @@
         "type": "string"
       }
     },
-    "category": {
-      "type": "string"
-    },
-    "subCategory": {
+    "topicName": {
       "type": "string"
     },
     "countOfPeopleJoined": {
@@ -43,10 +40,7 @@
     "communityTagId": {
       "type": "string"
     },
-    "communityCategoryId": {
-      "type": "integer"
-    },
-    "communitySubCategoryId": {
+    "topicId": {
       "type": "integer"
     },
     "createdOn": {
@@ -71,6 +65,18 @@
     },
     "communityGuideLines": {
       "type": "string"
+    },
+    "competencyArea": {
+      "type": "string"
+    },
+    "competencyTheme": {
+      "type": "string"
+    },
+    "competencySubTheme": {
+      "type": "string"
+    },
+    "countOfPeopleLiked": {
+      "type": "integer"
     }
   },
   "required": [
@@ -78,11 +84,8 @@
     "description",
     "communityAccessLevel",
     "orgId",
-    "posterImageUrl",
-    "imageUrl",
     "tags",
-    "category",
-    "subCategory",
+    "topicName",
     "createdUserId"
   ],
   "additionalProperties": false
