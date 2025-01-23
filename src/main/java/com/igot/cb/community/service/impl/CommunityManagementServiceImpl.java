@@ -364,10 +364,8 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD,
                     Constants.USER_COMMUNITY_TABLE, parameterisedMap);
                 Map<String, Object> dataMap = new HashMap<>();
-                dataMap.put("propertyMap", propertyMap);
-                dataMap.put("userId", userId);
-                dataMap.put("dataNode", optCommunity.get().getData());
-                dataMap.put("prevData", optCommunity.get());
+                dataMap.put(Constants.COMMUNITY, optCommunity.get());
+                dataMap.put(Constants.USER_ID, userId);
                 producer.push(userCountUpdateTopic, dataMap);
                 return response;
             } else {
@@ -386,12 +384,9 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                         Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_TABLE,
                         updateUserCommunityDetails, propertyMap);
                     Map<String, Object> dataMap = new HashMap<>();
-                    dataMap.put("propertyMap",propertyMap);
-                    dataMap.put("userId",userId);
-                    dataMap.put("dataNode",optCommunity.get().getData());
-                    dataMap.put("dataNode",optCommunity.get().getData());
-                    dataMap.put("prevData",optCommunity.get());
-                    producer.push(userCountUpdateTopic,dataMap);
+                    dataMap.put(Constants.COMMUNITY, optCommunity.get());
+                    dataMap.put(Constants.USER_ID, userId);
+                    producer.push(userCountUpdateTopic, dataMap);
                     return response;
 
                 } else {

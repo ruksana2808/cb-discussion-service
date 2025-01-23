@@ -140,6 +140,7 @@ public class Constants {
     public static final String COMMUNITY_NAME = "communityName";
     public static final String COUNT_OF_PEOPLE_LIKED = "countOfPeopleLiked";
     public static final String SEARCHTAGS = "searchTags";
+    public static final String COMMUNITY = "community";
 
     private Constants() {
     }

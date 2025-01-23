@@ -49,7 +49,7 @@ public class Consumer {
   @KafkaListener(groupId = "${kafka.topic.community.group}", topics = "${kafka.topic.community.user.count}")
   public void upateUserCount(ConsumerRecord<String, String> data) {
     try {
-      Map<String, Object> updateUserCount = mapper.readValue(data.value(), HashMap.class);
+      Map<String, Object> updateUserCount = mapper.readValue(data.value(), Map.class);
       updateJoinedUserCount(updateUserCount);
     } catch (Exception e) {
       log.error("Failed to update the userCount" + data.value(), e);
@@ -57,19 +57,23 @@ public class Consumer {
   }
 
   public void updateJoinedUserCount(Map<String, Object> updateUserCount) {
-    cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_LOOK_UP_TABLE, (Map<String, Object>) updateUserCount.get("propertyMap"));
-    ObjectNode dataNode = objectMapper.convertValue(updateUserCount.get("dataNode"), ObjectNode.class);
+    Map<String, Object> propertyMap = new HashMap<>();
+    CommunityEntity communityEntity = objectMapper.convertValue(updateUserCount.get(Constants.COMMUNITY), CommunityEntity.class);
+    String userId = (String) updateUserCount.get(Constants.USER_ID);
+    propertyMap.put(Constants.USER_ID, userId);
+    propertyMap.put(Constants.CommunityId, communityEntity.getCommunityId());
+    propertyMap.put(Constants.STATUS, true);
+    cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_LOOK_UP_TABLE, propertyMap);
+    ObjectNode dataNode = (ObjectNode) communityEntity.getData();
 
 // Perform the update
     long currentCount = dataNode.get(Constants.COUNT_OF_PEOPLE_JOINED).asLong();
     dataNode.put(Constants.COUNT_OF_PEOPLE_JOINED, currentCount + 1);Timestamp currentTime = new Timestamp(System.currentTimeMillis());
-    CommunityEntity communityEntity = objectMapper.convertValue(updateUserCount.get("prevData"), CommunityEntity.class);
     communityEntity.setUpdatedOn(currentTime);
     dataNode.put(Constants.UPDATED_ON, String.valueOf(currentTime));
-    String userId = (String) updateUserCount.get("userId");
     dataNode.put(Constants.UPDATED_BY, userId);
     dataNode.put(Constants.STATUS, Constants.ACTIVE);
-    ((ObjectNode) dataNode).put(Constants.COMMUNITY_ID, communityEntity.getCommunityId());
+    dataNode.put(Constants.COMMUNITY_ID, communityEntity.getCommunityId());
     communityEngagementRepository.save(communityEntity);
     Map<String, Object> map = objectMapper.convertValue(dataNode, Map.class);
     esUtilService.updateDocument(Constants.INDEX_NAME, Constants.INDEX_TYPE,
