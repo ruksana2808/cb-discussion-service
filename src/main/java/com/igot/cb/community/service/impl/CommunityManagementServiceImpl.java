@@ -6,10 +6,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.igot.cb.authentication.util.AccessTokenValidator;
 import com.igot.cb.community.entity.CommunityCategory;
 import com.igot.cb.community.entity.CommunityEntity;
+import com.igot.cb.community.kafka.consumer.Consumer;
+import com.igot.cb.community.kafka.producer.Producer;
 import com.igot.cb.community.repository.CommunityCategoryRepository;
 import com.igot.cb.community.repository.CommunityEngagementRepository;
 import com.igot.cb.community.service.CommunityManagementService;
@@ -30,6 +33,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -77,12 +81,27 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
 
     private Logger logger = LoggerFactory.getLogger(CommunityManagementServiceImpl.class);
 
+    @Autowired
+    private Producer producer;
+
+    @Value("${kafka.topic.community.user.count}")
+    private String userCountUpdateTopic;
+
 
     @Override
     public ApiResponse create(JsonNode communityDetails, String authToken) {
         log.info("CommunityEngagementService::create:creating community");
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_CREATE);
-        validatePayload(Constants.PAYLOAD_VALIDATION_FILE, communityDetails);
+        try {
+            validatePayload(Constants.PAYLOAD_VALIDATION_FILE, communityDetails);
+        } catch (CustomException e) {
+            log.error("Validation failed: {}", e.getMessage(), e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErrMsg(e.getMessage());
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return response;
+        }
+
         try {
             String userId = accessTokenValidator.verifyUserToken(authToken);
             if (StringUtils.isBlank(userId)) {
@@ -94,7 +113,11 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             String communityId = UUID.randomUUID().toString();
             CommunityEntity communityEngagementEntity = new CommunityEntity();
             communityEngagementEntity.setCommunityId(communityId);
-            ((ObjectNode) communityDetails).put(Constants.COUNT_OF_PEOPLE_JOINED, 0);
+            List<String> searchTags = new ArrayList<>();
+            searchTags.add(communityDetails.get(Constants.COMMUNITY_NAME).textValue().toLowerCase());
+            ArrayNode searchTagsArray = objectMapper.valueToTree(searchTags);
+            ((ObjectNode) communityDetails).put(Constants.COUNT_OF_PEOPLE_JOINED, 0L);
+            ((ObjectNode) communityDetails).put(Constants.COUNT_OF_PEOPLE_LIKED, 0L);
             ((ObjectNode) communityDetails).put(Constants.CREATED_BY, userId);
             ((ObjectNode) communityDetails).put(Constants.UPDATED_BY, userId);
             communityEngagementEntity.setData(communityDetails);
@@ -104,6 +127,8 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             communityEngagementEntity.setCreated_by(userId);
             communityEngagementEntity.setActive(true);
             CommunityEntity saveJsonEntity = communityEngagementRepository.save(communityEngagementEntity);
+            ((ObjectNode) saveJsonEntity.getData()).putArray(Constants.SEARCHTAGS)
+                .add(searchTagsArray);
             if (!saveJsonEntity.getData().isNull()) {
                 communityDetails = addExtraproperties(saveJsonEntity.getData(), communityId, currentTimestamp);
                 Map<String, Object> communityDetailsMap = objectMapper.convertValue(communityDetails, Map.class);
@@ -325,6 +350,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             Map<String, Object> propertyMap = new HashMap<>();
             propertyMap.put(Constants.USER_ID, userId);
             propertyMap.put(Constants.CommunityId, communityId);
+            //kafka event :: es updation: upsert (postgres and es )
             List<Map<String, Object>> userCommunityDetails = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
                 Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_TABLE, propertyMap, null, 1);
             if (CollectionUtils.isEmpty(userCommunityDetails)) {
@@ -337,11 +363,10 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                     new Timestamp(Calendar.getInstance().getTime().getTime()));
                 cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD,
                     Constants.USER_COMMUNITY_TABLE, parameterisedMap);
-                cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD,
-                    Constants.USER_COMMUNITY_LOOK_UP_TABLE, propertyMap);
-                JsonNode dataNode = optCommunity.get().getData();
-                ((ObjectNode) dataNode).put(Constants.COUNT_OF_PEOPLE_JOINED, dataNode.get(Constants.COUNT_OF_PEOPLE_JOINED).asInt()+1);
-                updateCommunityDetails(optCommunity.get(),userId, dataNode);
+                Map<String, Object> dataMap = new HashMap<>();
+                dataMap.put(Constants.COMMUNITY, optCommunity.get());
+                dataMap.put(Constants.USER_ID, userId);
+                producer.push(userCountUpdateTopic, dataMap);
                 return response;
             } else {
                 // Check if STATUS is false in the existing record
@@ -358,12 +383,10 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                     cassandraOperation.updateRecord(
                         Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_TABLE,
                         updateUserCommunityDetails, propertyMap);
-                    cassandraOperation.updateRecord(
-                        Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_LOOK_UP_TABLE,
-                        updateUserCommunityLookUp, propertyMap);
-                    JsonNode dataNode = optCommunity.get().getData();
-                    ((ObjectNode) dataNode).put(Constants.COUNT_OF_PEOPLE_JOINED, dataNode.get(Constants.COUNT_OF_PEOPLE_JOINED).asInt()+1);
-                    updateCommunityDetails(optCommunity.get(),userId, dataNode);
+                    Map<String, Object> dataMap = new HashMap<>();
+                    dataMap.put(Constants.COMMUNITY, optCommunity.get());
+                    dataMap.put(Constants.USER_ID, userId);
+                    producer.push(userCountUpdateTopic, dataMap);
                     return response;
 
                 } else {
@@ -1032,7 +1055,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
 
     private ApiResponse handleSearchAndCache(SearchCriteria searchCriteria, ApiResponse response) {
         try {
-            SearchResult searchResult = esUtilService.searchDocuments(Constants.CATEGORY_INDEX_NAME,
+            SearchResult searchResult = esUtilService.searchDocuments(Constants.INDEX_NAME,
                 searchCriteria);
             List<Map<String, Object>> discussions = objectMapper.convertValue(
                 searchResult.getData(),
@@ -1049,7 +1072,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             createSuccessResponse(response);
             return response;
         } catch (Exception e) {
-            logger.error("Eaxceprtion occured while fetching and caching in search API:", e);
+            logger.error("Exception occured while fetching and caching in search API:", e);
             throw new CustomException(Constants.ERROR, "error while processing",
                 HttpStatus.INTERNAL_SERVER_ERROR);
         }

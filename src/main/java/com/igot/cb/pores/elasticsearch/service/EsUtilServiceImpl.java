@@ -356,8 +356,15 @@ public class EsUtilServiceImpl implements EsUtilService {
             List<String> facets, SearchSourceBuilder searchSourceBuilder) {
         if (facets != null) {
             for (String field : facets) {
-                searchSourceBuilder.aggregation(
+                if ("topicId".equals(field)) {
+                    // Handle integer field directly without ".keyword"
+                    searchSourceBuilder.aggregation(
+                        AggregationBuilders.terms(field + "_agg").field(field).size(250));
+                } else {
+                    // Default behavior for other fields
+                    searchSourceBuilder.aggregation(
                         AggregationBuilders.terms(field + "_agg").field(field + ".keyword").size(250));
+                }
             }
         }
     }
