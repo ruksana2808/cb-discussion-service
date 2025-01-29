@@ -87,6 +87,9 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
     @Value("${kafka.topic.community.user.count}")
     private String userCountUpdateTopic;
 
+    @Autowired
+    private RedisTemplate<String, Object> objectRedisTemplate;
+
 
     @Override
     public ApiResponse create(JsonNode communityDetails, String authToken) {
@@ -515,8 +518,24 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             List<Map<String, Object>> userCommunityDetails = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
                 Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_LOOK_UP_TABLE, propertyMap,
                 fields, null);
-            response.getResult().put(Constants.USER_DETAILS,
+            Set<String> uniqueTaggedUserId = new HashSet<>();
+            List<Object> userList = new ArrayList<>();
+            if (!userCommunityDetails.isEmpty()) {
+                userCommunityDetails.forEach(communityDetail -> {
+                    Boolean status = (Boolean) communityDetail.get(Constants.STATUS);
+                    if (status instanceof Boolean && (Boolean) status) {
+                        uniqueTaggedUserId.add(Constants.USER_PREFIX + communityDetail.get(
+                            Constants.USER_ID_LOWER_CASE));
+                    }
+                });
+                List<String> taggedUserList = new ArrayList<>(uniqueTaggedUserId);
+                userList = fetchDataForKeys(taggedUserList);
+            }
+            response.getResult().put(Constants.USER_ID,
                 objectMapper.convertValue(userCommunityDetails, new TypeReference<Object>() {
+                }));
+            response.getResult().put(Constants.USER_DETAILS,
+                objectMapper.convertValue(userList, new TypeReference<Object>() {
                 }));
 
             return response;
@@ -528,6 +547,27 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 HttpStatus.INTERNAL_SERVER_ERROR);
 
         }
+    }
+
+    public List<Object> fetchDataForKeys(List<String> keys) {
+        // Fetch values for all keys from Redis
+        List<Object> values = objectRedisTemplate.opsForValue().multiGet(keys);
+
+        // Create a map of key-value pairs, converting stringified JSON objects to User objects
+        return keys.stream()
+            .filter(key -> values.get(keys.indexOf(key)) != null) // Filter out null values
+            .map(key -> {
+                String stringifiedJson = (String) values.get(keys.indexOf(key)); // Cast the value to String
+                try {
+                    // Convert the stringified JSON to a User object using ObjectMapper
+                    return objectMapper.readValue(stringifiedJson, Object.class); // You can map this to a specific User type if needed
+                } catch (Exception e) {
+                    // Handle any exceptions during deserialization
+                    e.printStackTrace();
+                    return null; // Return null in case of error
+                }
+            })
+            .collect(Collectors.toList());
     }
 
     @Override

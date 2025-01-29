@@ -152,6 +152,8 @@ public class Constants {
     public static final String LOGO = "logo";
     public static final String ORG_LIST = "orgList";
     public static final String COMMUNITY_ID_LOWERCASE = "communityid";
+    public static final String USER_PREFIX = "user:" ;
+    public static final String USER_ID_LOWER_CASE = "userid";
 
     private Constants() {
     }
