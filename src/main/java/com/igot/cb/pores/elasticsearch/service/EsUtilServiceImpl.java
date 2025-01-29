@@ -11,6 +11,7 @@ import com.igot.cb.pores.exceptions.CustomException;
 import com.igot.cb.pores.util.CbServerProperties;
 import com.igot.cb.pores.util.Constants;
 import com.networknt.schema.JsonSchemaFactory;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -34,8 +35,16 @@ import org.elasticsearch.index.query.*;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
+import org.elasticsearch.search.aggregations.Aggregation;
 import org.elasticsearch.search.aggregations.AggregationBuilders;
+import org.elasticsearch.search.aggregations.Aggregations;
+import org.elasticsearch.search.aggregations.ParsedMultiBucketAggregation;
+import org.elasticsearch.search.aggregations.bucket.MultiBucketsAggregation;
 import org.elasticsearch.search.aggregations.bucket.terms.Terms;
+import org.elasticsearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
+import org.elasticsearch.search.aggregations.metrics.ParsedTopHits;
+import org.elasticsearch.search.aggregations.metrics.TopHits;
+import org.elasticsearch.search.aggregations.metrics.TopHitsAggregationBuilder;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.sort.SortBuilders;
 import org.elasticsearch.search.sort.SortOrder;
@@ -203,11 +212,70 @@ public class EsUtilServiceImpl implements EsUtilService {
         return fieldAggregations;
     }
 
+    private Map<String, List<FacetDTO>> extractFacetDataForList(
+        SearchResponse searchResponse, SearchCriteria searchCriteria) {
+        Map<String, List<FacetDTO>> fieldAggregations = new HashMap<>();
+        if (searchCriteria.getFacets() != null) {
+            for (String field : searchCriteria.getFacets()) {
+                // Extract aggregation using the field name
+                Aggregation aggregation = searchResponse.getAggregations().get("topicId");
+
+                // Ensure the aggregation exists and is of type Terms
+                if (aggregation instanceof Terms) {
+                    Terms fieldAggregation = (Terms) aggregation;
+                    List<FacetDTO> fieldValueList = new ArrayList<>();
+
+                    for (Terms.Bucket bucket : fieldAggregation.getBuckets()) {
+                        String key = bucket.getKeyAsString();
+                        long docCount = bucket.getDocCount();
+
+                        // Check for nested top hits aggregation
+                        Aggregation topHitsAgg = bucket.getAggregations().get("top_hits#topNames");
+                        List<String> topNames = new ArrayList<>();
+
+                        if (topHitsAgg instanceof TopHits) {
+                            TopHits topHits = (TopHits) topHitsAgg;
+                            SearchHits hits = topHits.getHits();
+
+                            for (SearchHit hit : hits.getHits()) {
+                                Map<String, Object> source = hit.getSourceAsMap();
+                                topNames.add((String) source.get(Constants.TOPIC_ID));
+                            }
+                        }
+
+                        // Add FacetDTO with the key, doc count, and top names
+                        FacetDTO facetDTO = new FacetDTO(key, docCount);
+                        fieldValueList.add(facetDTO);
+                    }
+
+                    fieldAggregations.put(field, fieldValueList);
+                }
+            }
+        }
+        return fieldAggregations;
+    }
+
+
     private List<Map<String, Object>> extractPaginatedResult(SearchResponse paginatedSearchResponse) {
         SearchHit[] hits = paginatedSearchResponse.getHits().getHits();
         List<Map<String, Object>> paginatedResult = new ArrayList<>();
         for (SearchHit hit : hits) {
             paginatedResult.add(hit.getSourceAsMap());
+        }
+        // Process aggregations
+        Aggregations aggregations = paginatedSearchResponse.getAggregations();
+        if (aggregations != null) {
+            ParsedMultiBucketAggregation topicIdAgg = aggregations.get(Constants.TOPIC_ID);
+            if (topicIdAgg != null) {
+                for (MultiBucketsAggregation.Bucket bucket : topicIdAgg.getBuckets()) {
+                    ParsedTopHits topHits = bucket.getAggregations().get("topNames");
+                    if (topHits != null) {
+                        for (SearchHit hit : topHits.getHits().getHits()) {
+                            paginatedResult.add(hit.getSourceAsMap());
+                        }
+                    }
+                }
+            }
         }
         return paginatedResult;
     }
@@ -622,6 +690,50 @@ public class EsUtilServiceImpl implements EsUtilService {
 
         return documents;
     }
+
+    @Override
+    public SearchResult fetchTopCommunitiesForTopics(List<Integer> parentTopics, String indexName) throws IOException{
+        // Create a terms query to filter documents based on parentTopics from UI
+        TermsQueryBuilder termsQuery = QueryBuilders.termsQuery(Constants.TOPIC_ID, parentTopics);
+
+        // Create the terms aggregation
+        TermsAggregationBuilder parentTopicsAgg = AggregationBuilders.terms(Constants.TOPIC_ID)
+            .field(Constants.TOPIC_ID) // Use the .keyword field for exact matches
+            .size(parentTopics.size()); // Size based on the number of parent topics provided
+
+        // Create the top hits sub-aggregation
+        TopHitsAggregationBuilder topHitsAgg = AggregationBuilders.topHits("topNames")
+            .size(5); // Fetch 5 items for each distinct parent topic
+
+        // Add the sub-aggregation to the parent aggregation
+        parentTopicsAgg.subAggregation(topHitsAgg);
+
+        // Build the search request with the filter
+        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder()
+            .query(termsQuery) // Apply the terms query as a filter
+            .size(0) // Do not return regular hits, we only need aggregations
+            .aggregation(parentTopicsAgg);
+
+        SearchRequest searchRequest = new SearchRequest(Constants.INDEX_NAME);
+        searchRequest.source(searchSourceBuilder);
+
+        // Execute the search request
+        SearchResponse response = elasticsearchClient.search(searchRequest, RequestOptions.DEFAULT);
+        List<Map<String, Object>> paginatedResult = extractPaginatedResult(response);
+        SearchCriteria searchCriteria = new SearchCriteria();
+        List<String> facets = new ArrayList<>();
+        facets.add(Constants.TOPIC_ID);
+        searchCriteria.setFacets(facets);
+        Map<String, List<FacetDTO>> fieldAggregations =
+            extractFacetDataForList(response, searchCriteria);
+        SearchResult searchResult= new SearchResult();
+        searchResult.setData(objectMapper.valueToTree(paginatedResult));
+        searchResult.setFacets(fieldAggregations);
+        searchResult.setTotalCount(response.getHits().getTotalHits().value);
+        return searchResult;
+    }
+
+
 
     /**
      * Helper method to process search hits and add them to the documents list.

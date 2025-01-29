@@ -989,34 +989,66 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 response.getParams().setErrMsg(Constants.CATEGORIES_NOT_FOUND);
                 response.setResponseCode(HttpStatus.NOT_FOUND);
             }
-            List<Integer> categoryIds = optListCategories.stream()
+            List<Integer> topicIds = optListCategories.stream()
                 .map(CommunityCategory::getCategoryId) // Assuming getId() retrieves the ID
                 .collect(Collectors.toList());
-            List<Map<String, Object>> documents = esUtilService.matchAll(
-                Constants.CATEGORY_INDEX_NAME, categoryIds);
-            if (!documents.isEmpty()) {
+            SearchResult searchResult
+                = esUtilService.fetchTopCommunitiesForTopics(topicIds, Constants.INDEX_NAME);
+            if (!searchResult.getData().isEmpty()) {
+                List<Map<String, Object>> documents;
+                documents = objectMapper.convertValue(
+                    searchResult.getData(),
+                    new TypeReference<List<Map<String, Object>>>() {
+                    }
+                );
+                Set<String> uniqueOrgIds = new HashSet<>();
+                // Extract 'data' field from searchResult
+                JsonNode dataNode = searchResult.getData();
+                if (dataNode != null && dataNode.isArray()) {
+                    for (JsonNode item : dataNode) {
+                        if (item.has(Constants.ORD_ID) && !item.get(Constants.ORD_ID).isNull()) {
+                            JsonNode orgIdNode = item.get(Constants.ORD_ID);
+                            if (orgIdNode.isTextual()) {
+                                uniqueOrgIds.add(orgIdNode.asText());
+                            }
+                        }
+                    }
+                }
+                // Convert Set to List
+                List<String> orgIdList = new ArrayList<>(uniqueOrgIds);
+                Map<String, Object> propertyMap = new HashMap<>();
+                propertyMap.put(Constants.ID, orgIdList);
+                List<Map<String, Object>> orgInfoList = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
+                    Constants.KEYSPACE_SUNBIRD, Constants.TABLE_ORGANISATION, propertyMap,
+                    Arrays.asList(Constants.LOGO, Constants.ORG_NAME, Constants.ID), null);
                 // Create a result map to hold all categories
                 Map<String, Object> result = new HashMap<>();
+                result.put(Constants.FACETS, searchResult.getFacets());
+                result.put(Constants.ORG_LIST, orgInfoList);
 
-                // Process each parent category
+// List to store all parent categories
+                List<Map<String, Object>> categoryList = new ArrayList<>();
+
+// Process each parent category
                 optListCategories.forEach(parentCategory -> {
                     // Filter subcategories related to the current parent category
                     List<Map<String, Object>> subCategories = documents.stream()
-                        .filter(doc -> doc.get(Constants.PARENT_ID) != null &&
-                            doc.get(Constants.PARENT_ID).equals(parentCategory.getCategoryId()))
+                        .filter(doc -> doc.get(Constants.TOPIC_ID) != null &&
+                            doc.get(Constants.TOPIC_ID).equals(parentCategory.getCategoryId()))
                         .collect(Collectors.toList());
 
                     // Build the parent category map
                     Map<String, Object> parentCategoryMap = new HashMap<>();
-                    parentCategoryMap.put(Constants.CATEGORY_ID, parentCategory.getCategoryId());
-                    parentCategoryMap.put(Constants.CATEGORY_NAME,
-                        parentCategory.getCategoryName());
-                    parentCategoryMap.put(Constants.SUB_CATEGORIES, subCategories);
+                    parentCategoryMap.put(Constants.TOPIC_ID, parentCategory.getCategoryId());
+                    parentCategoryMap.put(Constants.TOPIC_NAME, parentCategory.getCategoryName());
+                    parentCategoryMap.put(Constants.COMMUNITIES, subCategories);
 
-                    // Add to result using categoryName as the key
-                    result.put(parentCategory.getCategoryName(), parentCategoryMap);
+                    // Add this category to the list
+                    categoryList.add(parentCategoryMap);
                 });
-                cacheService.putCache(Constants.CATEGORY_LIST_ALL_REDIS_KEY_PREFIX, result);
+
+// Store the list in the result map
+                result.put(Constants.DATA, categoryList);
 
                 // Set the result in the response
                 response.setResponseCode(HttpStatus.OK);

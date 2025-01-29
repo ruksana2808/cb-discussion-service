@@ -141,6 +141,16 @@ public class Constants {
     public static final String COUNT_OF_PEOPLE_LIKED = "countOfPeopleLiked";
     public static final String SEARCHTAGS = "searchTags";
     public static final String COMMUNITY = "community";
+    public static final String TOPIC_ID = "topicId";
+    public static final String FACETS = "facets";
+    public static final String DATA = "data";
+    public static final String COMMUNITIES = "communities";
+    public static final String TOPIC_NAME = "topicName";
+    public static final String ORD_ID = "orgId";
+    public static final String TABLE_ORGANISATION = "organisation";
+    public static final String ORG_NAME = "orgname";
+    public static final String LOGO = "logo";
+    public static final String ORG_LIST = "orgList";
 
     private Constants() {
     }
