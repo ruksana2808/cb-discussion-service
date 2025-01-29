@@ -133,9 +133,10 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 communityDetails = addExtraproperties(saveJsonEntity.getData(), communityId, currentTimestamp);
                 Map<String, Object> communityDetailsMap = objectMapper.convertValue(communityDetails, Map.class);
                 esUtilService.addDocument(Constants.INDEX_NAME, Constants.INDEX_TYPE, communityId, communityDetailsMap, cbServerProperties.getElasticCommunityJsonPath());
-                cacheService.putCache(Constants.REDIS_KEY_PREFIX + communityId, communityDetailsMap);
+                cacheService.putCache(communityId, communityDetailsMap);
                 log.info(
                         "created community");
+                cacheService.deleteCache(Constants.CATEGORY_LIST_ALL_REDIS_KEY_PREFIX);
                 response.getResult().put(Constants.STATUS, Constants.SUCCESSFULLY_CREATED);
                 response.getResult().put(Constants.COMMUNITY_ID, communityId);
                 return response;
@@ -179,7 +180,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             return response;
         }
         try {
-            String cachedJson = cacheService.getCache(Constants.REDIS_KEY_PREFIX + communityId);
+            String cachedJson = cacheService.getCache(communityId);
             if (StringUtils.isNotEmpty(cachedJson)) {
                 log.info("Record coming from redis cache");
                 response.getParams().setErrMsg(Constants.SUCCESSFULLY_READING);
@@ -255,7 +256,8 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 ((ObjectNode) esSave).put(Constants.UPDATED_ON, String.valueOf(currentTimestamp));
                 Map<String, Object> map = objectMapper.convertValue(esSave, Map.class);
                 esUtilService.updateDocument(Constants.INDEX_NAME, Constants.INDEX_TYPE, communityId, map, cbServerProperties.getElasticCommunityJsonPath());
-                cacheService.deleteCache(Constants.REDIS_KEY_PREFIX + communityId);
+                cacheService.deleteCache(communityId);
+                cacheService.deleteCache(Constants.CATEGORY_LIST_ALL_REDIS_KEY_PREFIX);
                 response.getResult().put(Constants.RESPONSE,
                         "Deleted the community with id: " + communityId);
             } else {
@@ -307,6 +309,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 updateCommunityDetails(communityEntityOptional.get(),userId,dataNode);
                 response.getResult().put(Constants.RESPONSE,
                         "Updated the community with id: " + communityId);
+                cacheService.deleteCache(Constants.CATEGORY_LIST_ALL_REDIS_KEY_PREFIX);
                 return response;
 
             } else {
@@ -417,7 +420,8 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
         esUtilService.updateDocument(Constants.INDEX_NAME, Constants.INDEX_TYPE,
             communityEntity.getCommunityId(), map,
             cbServerProperties.getElasticCommunityJsonPath());
-        cacheService.putCache(Constants.REDIS_KEY_PREFIX, communityEntity.getData());
+        cacheService.putCache(communityEntity.getCommunityId(), communityEntity.getData());
+        cacheService.deleteCache(Constants.CATEGORY_LIST_ALL_REDIS_KEY_PREFIX);
     }
 
     @Override
@@ -439,10 +443,43 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             List<Map<String, Object>> userCommunityDetails = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
                 Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_TABLE, propertyMap,
                 fields, null);
-            response.getResult().put(Constants.COMMUNITY_DETAILS,
+            List<CommunityEntity> communityEntityList = new ArrayList<>();
+            if (!userCommunityDetails.isEmpty()) {
+                userCommunityDetails.forEach(communityDetail -> {
+                    Boolean status = (Boolean) communityDetail.get(Constants.STATUS);
+                    if (status instanceof Boolean && (Boolean) status) {
+                        String cachedJson = cacheService.getCache(
+                            (String) communityDetail.get(Constants.COMMUNITY_ID_LOWERCASE));
+                        if (StringUtils.isNotEmpty(cachedJson)) {
+                            try {
+                                communityEntityList.add(
+                                    objectMapper.readValue(cachedJson,
+                                        new TypeReference<CommunityEntity>() {
+                                        }));
+                            } catch (JsonProcessingException e) {
+                                logger.error("Error while joining community:", e.getMessage(), e);
+                                throw new CustomException(Constants.ERROR, "error while processing",
+                                    HttpStatus.INTERNAL_SERVER_ERROR);
+                            }
+                        } else {
+                            Optional<CommunityEntity> communityEntityOptional = communityEngagementRepository.findByCommunityIdAndIsActive(
+                                (String) communityDetail.get(Constants.COMMUNITY_ID_LOWERCASE),
+                                true);
+                            communityEntityList.add(communityEntityOptional.get());
+                            cacheService.putCache(
+                                (String) communityDetail.get(Constants.COMMUNITY_ID_LOWERCASE),
+                                communityEntityOptional.get());
+                        }
+
+                    }
+                });
+            }
+            response.getResult().put(Constants.COMMUNITY_ID,
                 objectMapper.convertValue(userCommunityDetails, new TypeReference<Object>() {
                 }));
-
+            response.getResult().put(Constants.COMMUNITY_DETAILS,
+                objectMapper.convertValue(communityEntityList, new TypeReference<Object>() {
+                }));
             return response;
 
         } catch (Exception e) {
