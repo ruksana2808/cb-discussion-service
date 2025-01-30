@@ -80,6 +80,7 @@ public class Consumer {
         communityEntity.getCommunityId(), map,
         cbServerProperties.getElasticCommunityJsonPath());
     cacheService.putCache(Constants.REDIS_KEY_PREFIX, communityEntity.getData());
+    cacheService.deleteCache(Constants.CATEGORY_LIST_ALL_REDIS_KEY_PREFIX);
 
   }
 

@@ -28,4 +28,5 @@ public interface EsUtilService {
 
   List<Map<String, Object>> matchAll(String esIndexName , List<Integer> parentIds) throws IOException;
 
+  SearchResult fetchTopCommunitiesForTopics(List<Integer> topicIds, String indexName) throws IOException;
 }
