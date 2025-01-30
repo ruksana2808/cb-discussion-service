@@ -1171,6 +1171,30 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 new TypeReference<List<Map<String, Object>>>() {
                 }
             );
+            if (!searchResult.getData().isEmpty()) {
+                Set<String> uniqueOrgIds = new HashSet<>();
+                // Extract 'data' field from searchResult
+                JsonNode dataNode = searchResult.getData();
+                if (dataNode != null && dataNode.isArray()) {
+                    for (JsonNode item : dataNode) {
+                        if (item.has(Constants.ORD_ID) && !item.get(Constants.ORD_ID).isNull()) {
+                            JsonNode orgIdNode = item.get(Constants.ORD_ID);
+                            if (orgIdNode.isTextual()) {
+                                uniqueOrgIds.add(orgIdNode.asText());
+                            }
+                        }
+                    }
+                }
+                // Convert Set to List
+                List<String> orgIdList = new ArrayList<>(uniqueOrgIds);
+                Map<String, Object> propertyMap = new HashMap<>();
+                propertyMap.put(Constants.ID, orgIdList);
+                List<Map<String, Object>> orgInfoList = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
+                    Constants.KEYSPACE_SUNBIRD, Constants.TABLE_ORGANISATION, propertyMap,
+                    Arrays.asList(Constants.LOGO, Constants.ORG_NAME, Constants.ID), null);
+                searchResult.setAdditionalInfo(orgInfoList);
+            }
+
             redisTemplate.opsForValue().set(
                 generateRedisJwtTokenKey(searchCriteria),
                 searchResult,
