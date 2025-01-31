@@ -154,6 +154,9 @@ public class Constants {
     public static final String COMMUNITY_ID_LOWERCASE = "communityid";
     public static final String USER_PREFIX = "user:" ;
     public static final String USER_ID_LOWER_CASE = "userid";
+    public static final String INCREMENT = "increment";
+    public static final String DECREMENT = "decrement";
+    public static final String COUNT_OF_POST_CREATED = "countOfPostCreated";
 
     private Constants() {
     }

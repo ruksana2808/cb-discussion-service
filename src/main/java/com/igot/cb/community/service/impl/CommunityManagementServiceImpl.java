@@ -121,6 +121,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             ArrayNode searchTagsArray = objectMapper.valueToTree(searchTags);
             ((ObjectNode) communityDetails).put(Constants.COUNT_OF_PEOPLE_JOINED, 0L);
             ((ObjectNode) communityDetails).put(Constants.COUNT_OF_PEOPLE_LIKED, 0L);
+            ((ObjectNode) communityDetails).put(Constants.COUNT_OF_POST_CREATED, 0L);
             ((ObjectNode) communityDetails).put(Constants.CREATED_BY, userId);
             ((ObjectNode) communityDetails).put(Constants.UPDATED_BY, userId);
             communityEngagementEntity.setData(communityDetails);

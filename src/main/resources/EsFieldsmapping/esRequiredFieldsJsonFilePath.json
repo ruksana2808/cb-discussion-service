@@ -71,5 +71,8 @@
   },
   "searchTags": {
     "type": "keyword"
+  },
+  "countOfPostCreated": {
+    "type": "long"
   }
 }
