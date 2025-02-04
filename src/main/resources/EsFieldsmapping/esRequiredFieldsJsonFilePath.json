@@ -74,5 +74,17 @@
   },
   "countOfPostCreated": {
     "type": "long"
+  },
+  "competencies": {
+    "type": "keyword"
+  },
+  "competencyArea": {
+    "type": "keyword"
+  },
+  "competencyTheme": {
+    "type": "keyword"
+  },
+  "competencySubTheme": {
+    "type": "keyword"
   }
 }

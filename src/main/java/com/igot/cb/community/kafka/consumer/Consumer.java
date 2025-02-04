@@ -46,13 +46,9 @@ public class Consumer {
   @Autowired
   private ObjectMapper objectMapper;
 
-  @Value("${kafka.topic.community.post.count}")
-  private String communityPostCount;
 
 
-
-
-  @KafkaListener(groupId = "${kafka.topic.community.group}", topics = "${kafka.topic.community.user.count}")
+  @KafkaListener(groupId = "${kafka.topic.community.user.count.group}", topics = "${kafka.topic.community.user.count}")
   public void upateUserCount(ConsumerRecord<String, String> data) {
     try {
       Map<String, Object> updateUserCount = mapper.readValue(data.value(), Map.class);
@@ -62,7 +58,7 @@ public class Consumer {
     }
   }
 
-  @KafkaListener(groupId = "${kafka.topic.community.group}", topics = "${kafka.topic.community.post.count}")
+  @KafkaListener(groupId = "${kafka.topic.discusion.post.count.group}", topics = "${kafka.topic.discusion.post.count}")
   public void upatePostCount(ConsumerRecord<String, String> data) {
     log.info("Received post updation topic msg");
     try {

@@ -81,7 +81,7 @@
     "countOfPostCreated": {
       "type": "integer"
     },
-    "competencies_v6": {
+    "competencies": {
       "type": "array",
       "items": {
         "type": "object",
