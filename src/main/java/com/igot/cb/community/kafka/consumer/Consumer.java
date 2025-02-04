@@ -58,7 +58,7 @@ public class Consumer {
     }
   }
 
-  @KafkaListener(groupId = "${kafka.topic.discusion.post.count.group}", topics = "${kafka.topic.discusion.post.count}")
+  @KafkaListener(groupId = "${kafka.topic.community.discusion.post.count.group}", topics = "${kafka.topic.community.discusion.post.count}")
   public void upatePostCount(ConsumerRecord<String, String> data) {
     log.info("Received post updation topic msg");
     try {
