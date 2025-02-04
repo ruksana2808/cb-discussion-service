@@ -77,6 +77,78 @@
     },
     "countOfPeopleLiked": {
       "type": "integer"
+    },
+    "countOfPostCreated": {
+      "type": "integer"
+    },
+    "competencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "competencyAreaIdentifier": {
+            "type": "string"
+          },
+          "competencyAreaRefId": {
+            "type": "string"
+          },
+          "competencySubThemeAdditionalProperties": {
+            "type": "object",
+            "properties": {
+              "displayName": {
+                "type": "string"
+              },
+              "timeStamp": {
+                "type": "integer"
+              }
+            }
+          },
+          "competencyThemeRefId": {
+            "type": "string"
+          },
+          "competencyAreaDescription": {
+            "type": "string"
+          },
+          "competencySubThemeIdentifier": {
+            "type": "string"
+          },
+          "competencySubThemeDescription": {
+            "type": "string"
+          },
+          "competencyThemeName": {
+            "type": "string"
+          },
+          "competencyThemeIdentifier": {
+            "type": "string"
+          },
+          "competencyThemeType": {
+            "type": "string"
+          },
+          "competencySubThemeName": {
+            "type": "string"
+          },
+          "competencySubThemeRefId": {
+            "type": "string"
+          },
+          "competencyThemeAdditionalProperties": {
+            "type": "object",
+            "properties": {
+              "displayName": {
+                "type": "string"
+              },
+              "timeStamp": {
+                "type": "integer"
+              }
+            }
+          },
+          "competencyAreaName": {
+            "type": "string"
+          },
+          "competencyThemeDescription": {
+            "type": "string"
+          }
+        }
+      }
     }
   },
   "required": [
