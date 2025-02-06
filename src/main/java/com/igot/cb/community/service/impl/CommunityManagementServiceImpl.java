@@ -122,6 +122,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             ((ObjectNode) communityDetails).put(Constants.COUNT_OF_PEOPLE_JOINED, 0L);
             ((ObjectNode) communityDetails).put(Constants.COUNT_OF_PEOPLE_LIKED, 0L);
             ((ObjectNode) communityDetails).put(Constants.COUNT_OF_POST_CREATED, 0L);
+            ((ObjectNode) communityDetails).put(Constants.COUNT_OF_ANSWER_POST_CREATED, 0L);
             ((ObjectNode) communityDetails).put(Constants.CREATED_BY, userId);
             ((ObjectNode) communityDetails).put(Constants.UPDATED_BY, userId);
             communityEngagementEntity.setData(communityDetails);
@@ -196,6 +197,8 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 Optional<CommunityEntity> communityEntityOptional = communityEngagementRepository.findByCommunityIdAndIsActive(communityId, true);
                 if (communityEntityOptional.isPresent()) {
                     CommunityEntity communityEntity = communityEntityOptional.get();
+                    cacheService.putCache(communityEntity.getCommunityId(),
+                        communityEntityOptional.get().getData());
                     log.info("Record coming from postgres db");
                     response.getParams().setErrMsg(Constants.SUCCESSFULLY_READING);
                     response.getResult().put(Constants.COMMUNITY_DETAILS, objectMapper.convertValue(communityEntity.getData(), new TypeReference<Object>() {
@@ -447,7 +450,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             List<Map<String, Object>> userCommunityDetails = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
                 Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_TABLE, propertyMap,
                 fields, null);
-            List<CommunityEntity> communityEntityList = new ArrayList<>();
+            List<Object> communityEntityList = new ArrayList<>();
             if (!userCommunityDetails.isEmpty()) {
                 userCommunityDetails.forEach(communityDetail -> {
                     Boolean status = (Boolean) communityDetail.get(Constants.STATUS);
@@ -458,7 +461,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                             try {
                                 communityEntityList.add(
                                     objectMapper.readValue(cachedJson,
-                                        new TypeReference<CommunityEntity>() {
+                                        new TypeReference<Object>() {
                                         }));
                             } catch (JsonProcessingException e) {
                                 logger.error("Error while joining community:", e.getMessage(), e);
@@ -469,10 +472,12 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                             Optional<CommunityEntity> communityEntityOptional = communityEngagementRepository.findByCommunityIdAndIsActive(
                                 (String) communityDetail.get(Constants.COMMUNITY_ID_LOWERCASE),
                                 true);
-                            communityEntityList.add(communityEntityOptional.get());
-                            cacheService.putCache(
-                                (String) communityDetail.get(Constants.COMMUNITY_ID_LOWERCASE),
-                                communityEntityOptional.get());
+                            if (communityEntityOptional.isPresent()){
+                                communityEntityList.add(communityEntityOptional.get().getData());
+                                cacheService.putCache(
+                                    (String) communityDetail.get(Constants.COMMUNITY_ID_LOWERCASE),
+                                    communityEntityOptional.get().getData());
+                            }
                         }
 
                     }
@@ -495,9 +500,17 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
     }
 
     @Override
-    public ApiResponse listOfUsersJoined(String communityId, String authToken) {
+    public ApiResponse listOfUsersJoined(String authToken, Map<String, Object> requestPayload) {
         log.info("CommunityEngagementService:listOfUsersJoined::reading");
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_LIST_USER);
+
+        String payloadErrMsg = validatePayloadForListOfUsers(requestPayload);
+        if (!payloadErrMsg.isEmpty()) {
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErrMsg(payloadErrMsg);
+            return response;
+        }
         try {
             String userId = accessTokenValidator.verifyUserToken(authToken);
             if (StringUtils.isBlank(userId)) {
@@ -505,42 +518,66 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 response.setResponseCode(HttpStatus.BAD_REQUEST);
                 return response;
             }
-            if (StringUtils.isEmpty(communityId)) {
-                logger.error("Community Id not found");
-                response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-                response.getParams().setErrMsg(Constants.ID_NOT_FOUND);
+            String communityId = (String) requestPayload.get(Constants.COMMUNITY_ID);
+            int offset = 0;
+            int limit = 10;
+
+            if (requestPayload.containsKey(Constants.OFFSET) && requestPayload.get(
+                Constants.OFFSET) instanceof Number) {
+                offset = ((Number) requestPayload.get(Constants.OFFSET)).intValue();
+            }
+
+            if (requestPayload.containsKey(Constants.LIMIT) && requestPayload.get(
+                Constants.LIMIT) instanceof Number) {
+                limit = ((Number) requestPayload.get(Constants.LIMIT)).intValue();
+            }
+            log.info("Fetching users from Redis for Community ID: {} with Offset: {}, Limit: {}",
+                communityId, offset, limit);
+            Long listSize = cacheService.getListSize(
+                Constants.CMMUNITY_USER_REDIS_PREFIX + communityId);
+            List<String> paginatedUserIds = new ArrayList<>();
+            Set<String> uniqueUserIds = new HashSet<>();
+            if (listSize == null || listSize.equals(0L)) {
+                paginatedUserIds = fetchDataFromPrimary(communityId, offset, limit);
+                if (paginatedUserIds == null || paginatedUserIds.isEmpty()) {
+                    response.getResult().put(Constants.USER_DETAILS, Collections.emptyList());
+                    response.setResponseCode(HttpStatus.OK);
+                    return response;
+                }
+            }
+            int startIndex = offset * limit;
+            if (startIndex >= listSize) {
+                response.getResult().put(Constants.USER_DETAILS, Collections.emptyList());
+                response.setResponseCode(HttpStatus.OK);
                 return response;
             }
-            Map<String, Object> propertyMap = new HashMap<>();
-            propertyMap.put(Constants.COMMUNITY_ID, communityId);
-            List<String> fields = new ArrayList();
-            fields.add(Constants.USER_ID);
-            fields.add(Constants.STATUS);
-            List<Map<String, Object>> userCommunityDetails = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
-                Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_LOOK_UP_TABLE, propertyMap,
-                fields, null);
-            Set<String> uniqueTaggedUserId = new HashSet<>();
-            List<Object> userList = new ArrayList<>();
-            if (!userCommunityDetails.isEmpty()) {
-                userCommunityDetails.forEach(communityDetail -> {
-                    Boolean status = (Boolean) communityDetail.get(Constants.STATUS);
-                    if (status instanceof Boolean && (Boolean) status) {
-                        uniqueTaggedUserId.add(Constants.USER_PREFIX + communityDetail.get(
-                            Constants.USER_ID_LOWER_CASE));
-                    }
-                });
-                List<String> taggedUserList = new ArrayList<>(uniqueTaggedUserId);
-                userList = fetchDataForKeys(taggedUserList);
+            paginatedUserIds =
+                cacheService.getPaginatedUsersFromHash(
+                    Constants.CMMUNITY_USER_REDIS_PREFIX + communityId, offset, limit);
+
+            if (paginatedUserIds == null || paginatedUserIds.isEmpty()) {
+                paginatedUserIds = fetchDataFromPrimary(communityId, offset, limit);
+
             }
-            response.getResult().put(Constants.USER_ID,
-                objectMapper.convertValue(userCommunityDetails, new TypeReference<Object>() {
-                }));
+            if (paginatedUserIds == null || paginatedUserIds.isEmpty()) {
+                response.getResult().put(Constants.USER_DETAILS, Collections.emptyList());
+                response.setResponseCode(HttpStatus.OK);
+                return response;
+            }
+
+            // Convert Redis Objects to Strings
+            for (Object userIdObj : paginatedUserIds) {
+                if (userIdObj instanceof String) {
+                    uniqueUserIds.add((String) userIdObj);
+                }
+            }
+            List<String> userListWithPrefix = new ArrayList<>(uniqueUserIds);
+            List<Object> userList = fetchDataForKeys(userListWithPrefix);
             response.getResult().put(Constants.USER_DETAILS,
                 objectMapper.convertValue(userList, new TypeReference<Object>() {
                 }));
-
+            response.setResponseCode(HttpStatus.OK);
             return response;
-
         } catch (Exception e) {
             logger.error("Error while reading list of users joined in a  community:",
                 e.getMessage(), e);
@@ -548,6 +585,67 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 HttpStatus.INTERNAL_SERVER_ERROR);
 
         }
+    }
+
+    private List<String> fetchDataFromPrimary(String communityId, int offset, int limit) {
+        log.info("No users found in Redis for Community ID: {}. Fetching from Cassandra.",
+            communityId);
+        Set<String> uniqueUserIds = new HashSet<>();
+        List<String> paginatedUserIds = new ArrayList<>();
+        Map<String, Object> propertyMap = new HashMap<>();
+        propertyMap.put(Constants.COMMUNITY_ID, communityId);
+        List<String> fields = new ArrayList();
+        fields.add(Constants.USER_ID);
+        fields.add(Constants.STATUS);
+        List<Map<String, Object>> userCommunityDetails = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
+            Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_LOOK_UP_TABLE, propertyMap,
+            fields, null);
+        // Fetch from Cassandra if Redis is empty
+        if (userCommunityDetails.isEmpty()) {
+            return paginatedUserIds;
+        }
+
+        // Extract & store unique user IDs
+        for (Map<String, Object> communityDetail : userCommunityDetails) {
+            Boolean status = (Boolean) communityDetail.get(Constants.STATUS);
+            if (Boolean.TRUE.equals(status)) {
+                uniqueUserIds.add(
+                    Constants.USER_PREFIX + communityDetail.get(Constants.USER_ID_LOWER_CASE));
+            }
+        }
+        if (!uniqueUserIds.isEmpty()) {
+            // Push data back to Redis for caching
+            cacheService.addUsersToHash(Constants.CMMUNITY_USER_REDIS_PREFIX + communityId,
+                uniqueUserIds);
+            // Fetch paginated user IDs again from Redis
+            paginatedUserIds =
+                cacheService.getPaginatedUsersFromHash(
+                    Constants.CMMUNITY_USER_REDIS_PREFIX + communityId, offset, limit);
+            return paginatedUserIds;
+        }
+        return paginatedUserIds;
+    }
+
+    private String validatePayloadForListOfUsers(Map<String, Object> requestPayload) {
+        List<String> errObjList = new ArrayList<>();
+        if (!requestPayload.containsKey(Constants.COMMUNITY_ID) || StringUtils.isBlank(
+            (String) requestPayload.get(Constants.COMMUNITY_ID))) {
+            errObjList.add(Constants.COMMUNITY_ID);
+        }
+        if (!requestPayload.containsKey(Constants.OFFSET)
+            || requestPayload.get(Constants.OFFSET) == null ||
+            !(requestPayload.get(Constants.OFFSET) instanceof Integer)) {
+            errObjList.add(Constants.OFFSET);
+        }
+        if (!requestPayload.containsKey(Constants.LIMIT)
+            || requestPayload.get(Constants.LIMIT) == null ||
+            !(requestPayload.get(Constants.LIMIT) instanceof Integer)) {
+            errObjList.add(Constants.LIMIT);
+        }
+        if (!errObjList.isEmpty()) {
+            return "Missing mandatory attributes or Improper dataType. " + errObjList.toString();
+        }
+        return "";
     }
 
     public List<Object> fetchDataForKeys(List<String> keys) {
@@ -626,6 +724,10 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 ((ObjectNode) dataNode).put(Constants.COUNT_OF_PEOPLE_JOINED,
                     dataNode.get(Constants.COUNT_OF_PEOPLE_JOINED).asInt() - 1);
                 updateCommunityDetails(optCommunity.get(), userId, dataNode);
+                String redisKey = Constants.CMMUNITY_USER_REDIS_PREFIX + communityId;
+                // Delete the key from Redis
+                objectRedisTemplate.delete(redisKey);
+                cacheService.deleteUserFromHash(Constants.CMMUNITY_USER_REDIS_PREFIX+communityId,Constants.USER_PREFIX+userId);
                 return response;
             } else {
                 response.setResponseCode(HttpStatus.BAD_REQUEST);

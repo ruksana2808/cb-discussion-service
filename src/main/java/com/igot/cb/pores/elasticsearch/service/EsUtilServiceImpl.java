@@ -378,8 +378,14 @@ public class EsUtilServiceImpl implements EsUtilService {
         if (isNotBlank(searchCriteria.getOrderBy()) && isNotBlank(searchCriteria.getOrderDirection())) {
             SortOrder sortOrder =
                     Constants.ASC.equals(searchCriteria.getOrderDirection()) ? SortOrder.ASC : SortOrder.DESC;
-            searchSourceBuilder.sort(
+            if (searchCriteria.getOrderBy().equalsIgnoreCase(Constants.COUNT_OF_PEOPLE_JOINED)) {
+                searchSourceBuilder.sort(
+                    SortBuilders.fieldSort(searchCriteria.getOrderBy()).order(sortOrder).unmappedType("long"));
+            } else {
+                // Handle other types (like String or others)
+                searchSourceBuilder.sort(
                     SortBuilders.fieldSort(searchCriteria.getOrderBy() + Constants.KEYWORD).order(sortOrder));
+            }
         }
     }
 

@@ -157,6 +157,10 @@ public class Constants {
     public static final String INCREMENT = "increment";
     public static final String DECREMENT = "decrement";
     public static final String COUNT_OF_POST_CREATED = "countOfPostCreated";
+    public static final String OFFSET = "offset";
+    public static final String LIMIT = "limit";
+    public static final String CMMUNITY_USER_REDIS_PREFIX = "users_communinty_";
+    public static final String COUNT_OF_ANSWER_POST_CREATED = "countOfAnswerPost";
 
     private Constants() {
     }

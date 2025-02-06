@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -45,6 +46,9 @@ public class Consumer {
 
   @Autowired
   private ObjectMapper objectMapper;
+
+  @Autowired
+  private RedisTemplate<String, Object> objectRedisTemplate;
 
 
 
@@ -103,6 +107,10 @@ public class Consumer {
     propertyMap.put(Constants.CommunityId, communityEntity.getCommunityId());
     propertyMap.put(Constants.STATUS, true);
     cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD, Constants.USER_COMMUNITY_LOOK_UP_TABLE, propertyMap);
+    String redisKey = Constants.CMMUNITY_USER_REDIS_PREFIX + communityEntity.getCommunityId();
+
+    // Delete the key from Redis
+    objectRedisTemplate.delete(redisKey);
     ObjectNode dataNode = (ObjectNode) communityEntity.getData();
 
 // Perform the update
@@ -120,6 +128,7 @@ public class Consumer {
         cbServerProperties.getElasticCommunityJsonPath());
     cacheService.putCache(Constants.REDIS_KEY_PREFIX, communityEntity.getData());
     cacheService.deleteCache(Constants.CATEGORY_LIST_ALL_REDIS_KEY_PREFIX);
+    cacheService.upsertUserToHash(Constants.CMMUNITY_USER_REDIS_PREFIX+communityEntity.getCommunityId(),Constants.USER_PREFIX+userId, Constants.USER_PREFIX+userId);
 
   }
 

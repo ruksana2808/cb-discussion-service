@@ -81,7 +81,7 @@
     "countOfPostCreated": {
       "type": "integer"
     },
-    "competencies": {
+    "competencies_v6": {
       "type": "array",
       "items": {
         "type": "object",
@@ -149,6 +149,9 @@
           }
         }
       }
+    },
+    "countOfAnswerPost": {
+      "type": "integer"
     }
   },
   "required": [

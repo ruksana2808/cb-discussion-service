@@ -22,7 +22,7 @@ public interface CommunityManagementService {
 
     ApiResponse communitiesJoinedByUser(String authToken);
 
-    ApiResponse listOfUsersJoined(String communityId, String authToken);
+    ApiResponse listOfUsersJoined(String authToken, Map<String, Object> requestPayload);
 
     ApiResponse unJoinCommunity(Map<String, Object> request, String authToken);
 

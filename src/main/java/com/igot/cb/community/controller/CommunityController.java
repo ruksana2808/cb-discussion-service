@@ -61,12 +61,15 @@ public class CommunityController {
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
-    @GetMapping("/community/listuser/{communityId}")
-    public ResponseEntity<ApiResponse> listOfUsersJoined(@PathVariable String communityId,
-        @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
-        ApiResponse response = communityManagementService.listOfUsersJoined(communityId, authToken);
+    @PostMapping("/community/listuser")
+    public ResponseEntity<ApiResponse> listOfUsersJoined(
+        @RequestHeader(Constants.X_AUTH_TOKEN) String authToken,
+        @RequestBody Map<String, Object> requestPayload) {
+
+        ApiResponse response = communityManagementService.listOfUsersJoined(authToken, requestPayload);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
+
 
     @PutMapping("/unjoin")
     public ResponseEntity<ApiResponse> unJoin(@RequestBody Map<String, Object> request,
