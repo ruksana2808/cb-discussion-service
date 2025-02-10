@@ -561,6 +561,8 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             }
             if (paginatedUserIds == null || paginatedUserIds.isEmpty()) {
                 response.getResult().put(Constants.USER_DETAILS, Collections.emptyList());
+                response.getResult().put(Constants.USER_COUNT,
+                    0L);
                 response.setResponseCode(HttpStatus.OK);
                 return response;
             }
@@ -576,6 +578,8 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             response.getResult().put(Constants.USER_DETAILS,
                 objectMapper.convertValue(userList, new TypeReference<Object>() {
                 }));
+            response.getResult().put(Constants.USER_COUNT,
+                userList);
             response.setResponseCode(HttpStatus.OK);
             return response;
         } catch (Exception e) {
