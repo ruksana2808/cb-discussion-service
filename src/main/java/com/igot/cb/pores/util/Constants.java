@@ -99,6 +99,7 @@ public class Constants {
     public static final String USER_COMMUNITY_LOOK_UP_TABLE = "community_user_lookup";
     public static final String LAST_UPDATED_AT = "lastupdatedat";
     public static final String USER_DETAILS = "userDetails";
+    public static final String USER_COUNT = "usersJoinedCount";
     public static String CommunityId = "communityId";
     public static final String ALREADY_JOINED_COMMUNITY = "This user is already joined this community";
     public static final String API_COMMUNITY_JOIN = "api.community.join";

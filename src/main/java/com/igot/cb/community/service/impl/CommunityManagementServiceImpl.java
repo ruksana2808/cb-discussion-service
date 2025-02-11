@@ -541,6 +541,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 paginatedUserIds = fetchDataFromPrimary(communityId, offset, limit);
                 if (paginatedUserIds == null || paginatedUserIds.isEmpty()) {
                     response.getResult().put(Constants.USER_DETAILS, Collections.emptyList());
+                    response.getResult().put(Constants.USER_COUNT, 0L);
                     response.setResponseCode(HttpStatus.OK);
                     return response;
                 }
@@ -548,6 +549,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             int startIndex = offset * limit;
             if (startIndex >= listSize) {
                 response.getResult().put(Constants.USER_DETAILS, Collections.emptyList());
+                response.getResult().put(Constants.USER_COUNT, 0L);
                 response.setResponseCode(HttpStatus.OK);
                 return response;
             }
@@ -557,10 +559,14 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
 
             if (paginatedUserIds == null || paginatedUserIds.isEmpty()) {
                 paginatedUserIds = fetchDataFromPrimary(communityId, offset, limit);
+                listSize = cacheService.getListSize(
+                    Constants.CMMUNITY_USER_REDIS_PREFIX + communityId);
 
             }
             if (paginatedUserIds == null || paginatedUserIds.isEmpty()) {
                 response.getResult().put(Constants.USER_DETAILS, Collections.emptyList());
+                response.getResult().put(Constants.USER_COUNT,
+                    0L);
                 response.setResponseCode(HttpStatus.OK);
                 return response;
             }
@@ -576,6 +582,8 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             response.getResult().put(Constants.USER_DETAILS,
                 objectMapper.convertValue(userList, new TypeReference<Object>() {
                 }));
+            response.getResult().put(Constants.USER_COUNT,
+                listSize);
             response.setResponseCode(HttpStatus.OK);
             return response;
         } catch (Exception e) {
