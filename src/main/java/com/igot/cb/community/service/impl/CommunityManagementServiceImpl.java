@@ -559,6 +559,8 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
 
             if (paginatedUserIds == null || paginatedUserIds.isEmpty()) {
                 paginatedUserIds = fetchDataFromPrimary(communityId, offset, limit);
+                listSize = cacheService.getListSize(
+                    Constants.CMMUNITY_USER_REDIS_PREFIX + communityId);
 
             }
             if (paginatedUserIds == null || paginatedUserIds.isEmpty()) {
