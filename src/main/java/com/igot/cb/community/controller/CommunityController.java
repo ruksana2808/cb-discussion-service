@@ -129,4 +129,10 @@ public class CommunityController {
         ApiResponse response = communityManagementService.lisAllCategoryWithSubCat();
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
+
+    @PostMapping("/pupular")
+    public ResponseEntity<ApiResponse> getTopCommunitiesByField(@RequestBody Map<String, Object> payload) {
+        ApiResponse response = communityManagementService.getPopularCommunitiesByField(payload);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

@@ -41,4 +41,6 @@ public interface CommunityManagementService {
     ApiResponse listOfSubCategory(SearchCriteria searchCriteria);
 
     ApiResponse lisAllCategoryWithSubCat();
+
+    ApiResponse getPopularCommunitiesByField(Map<String, Object> payload);
 }

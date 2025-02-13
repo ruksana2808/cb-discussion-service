@@ -162,6 +162,7 @@ public class Constants {
     public static final String LIMIT = "limit";
     public static final String CMMUNITY_USER_REDIS_PREFIX = "users_communinty_";
     public static final String COUNT_OF_ANSWER_POST_CREATED = "countOfAnswerPost";
+    public static final String FIELD = "field";
 
     private Constants() {
     }

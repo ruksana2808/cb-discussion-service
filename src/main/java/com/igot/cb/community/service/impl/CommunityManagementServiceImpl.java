@@ -26,10 +26,24 @@ import com.igot.cb.transactional.cassandrautils.CassandraOperation;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
+import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.elasticsearch.action.search.SearchRequest;
+import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.client.RequestOptions;
+import org.elasticsearch.search.aggregations.AggregationBuilders;
+import org.elasticsearch.search.aggregations.Aggregations;
+import org.elasticsearch.search.aggregations.BucketOrder;
+import org.elasticsearch.search.SearchHit;
+import org.elasticsearch.search.SearchHits;
+import org.elasticsearch.search.aggregations.bucket.terms.Terms;
+import org.elasticsearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
+import org.elasticsearch.search.builder.SearchSourceBuilder;
+import org.elasticsearch.search.sort.SortBuilders;
+import org.elasticsearch.search.sort.SortOrder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -974,6 +988,8 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
         }
     }
 
+
+
     @Override
     public ApiResponse updateCategory(JsonNode categoryDetails, String authToken) {
         log.info("CommunityEngagementService:updateCategory:updating category");
@@ -1256,6 +1272,73 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
+    @Override
+    public ApiResponse getPopularCommunitiesByField(Map<String, Object> payload) {
+        log.info("CommunityEngagementService:getPopularCommunitiesByField:listing");
+        ApiResponse response = ProjectUtil.createDefaultResponse(
+            Constants.API_SUB_CATEGORY_LIST_ALL);
+        try {
+            if (payload.isEmpty() || !payload.containsKey(Constants.FIELD)
+                || payload.get(Constants.FIELD) == null) {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErrMsg("Field is mandatory");
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+
+            }
+            SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+            searchSourceBuilder.size(10); // Number of documents to retrieve
+
+            // Sort by 'countOfPeopleJoined' in descending order
+            searchSourceBuilder.sort(SortBuilders.fieldSort((String) payload.get(Constants.FIELD))
+                .order(SortOrder.DESC));
+
+            // Define aggregations (facets)
+            // Example: Aggregation by 'location'
+            TermsAggregationBuilder aggregationBuilder = AggregationBuilders.terms(
+                    payload.get(Constants.FIELD) + "_terms")
+                .field((String) payload.get(Constants.FIELD))
+                .size(10);
+            searchSourceBuilder.aggregation(aggregationBuilder);
+
+            // Create the search request
+            SearchRequest searchRequest = new SearchRequest(Constants.INDEX_NAME);
+            searchRequest.source(searchSourceBuilder);
+
+            // Execute the search request
+            SearchResponse searchResponse = esUtilService.popularCommunities(searchRequest,
+                RequestOptions.DEFAULT);
+
+            // Retrieve and set the search hits
+            List<Map<String, Object>> documents = new ArrayList<>();
+            for (SearchHit hit : searchResponse.getHits().getHits()) {
+                documents.add(hit.getSourceAsMap());
+            }
+            response.getResult().put(Constants.DATA,
+                documents);
+            Aggregations aggregations = searchResponse.getAggregations();
+            if (aggregations != null) {
+                Terms terms = aggregations.get(payload.get(Constants.FIELD) + "_terms");
+                List<Map<String, Object>> buckets = new ArrayList<>();
+                for (Terms.Bucket bucket : terms.getBuckets()) {
+                    Map<String, Object> bucketMap = new HashMap<>();
+                    bucketMap.put("key", bucket.getKeyAsString());
+                    bucketMap.put("doc_count", bucket.getDocCount());
+                    buckets.add(bucketMap);
+                }
+//                response.getResult().setAggregations(buckets);
+                response.getResult().put(Constants.FACETS,
+                    buckets);
+            }
+            return response;
+        } catch (Exception e) {
+            logger.error("Error while executing Elasticsearch query: {}", e.getMessage(), e);
+            throw new CustomException("Error while processing", e.getMessage(),
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
 
     private CommunityCategory persistCategoryInPrimary(JsonNode categoryDetails, Integer parentId,
         String userId, Timestamp currentTimestamp) {
