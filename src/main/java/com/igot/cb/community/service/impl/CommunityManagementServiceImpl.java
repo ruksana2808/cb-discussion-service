@@ -128,12 +128,16 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             List<String> searchTags = new ArrayList<>();
             searchTags.add(communityDetails.get(Constants.COMMUNITY_NAME).textValue().toLowerCase());
             ArrayNode searchTagsArray = objectMapper.valueToTree(searchTags);
+            ((ObjectNode) communityDetails).put(Constants.STATUS, Constants.ACTIVE);
+            ((ObjectNode) communityDetails).put(Constants.COMMUNITY_ID, communityId);
             ((ObjectNode) communityDetails).put(Constants.COUNT_OF_PEOPLE_JOINED, 0L);
             ((ObjectNode) communityDetails).put(Constants.COUNT_OF_PEOPLE_LIKED, 0L);
             ((ObjectNode) communityDetails).put(Constants.COUNT_OF_POST_CREATED, 0L);
             ((ObjectNode) communityDetails).put(Constants.COUNT_OF_ANSWER_POST_CREATED, 0L);
             ((ObjectNode) communityDetails).put(Constants.CREATED_BY, userId);
             ((ObjectNode) communityDetails).put(Constants.UPDATED_BY, userId);
+            ((ObjectNode) communityDetails).putArray(Constants.SEARCHTAGS)
+                .add(searchTagsArray);
             communityEngagementEntity.setData(communityDetails);
             Timestamp currentTimestamp = new Timestamp(System.currentTimeMillis());
             communityEngagementEntity.setCreatedOn(currentTimestamp);
@@ -141,8 +145,6 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             communityEngagementEntity.setCreated_by(userId);
             communityEngagementEntity.setActive(true);
             CommunityEntity saveJsonEntity = communityEngagementRepository.save(communityEngagementEntity);
-            ((ObjectNode) saveJsonEntity.getData()).putArray(Constants.SEARCHTAGS)
-                .add(searchTagsArray);
             if (!saveJsonEntity.getData().isNull()) {
                 communityDetails = addExtraproperties(saveJsonEntity.getData(), communityId, currentTimestamp);
                 Map<String, Object> communityDetailsMap = objectMapper.convertValue(communityDetails, Map.class);
@@ -1350,17 +1352,21 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
 
         try {
             String communityId = (String) reportData.get(Constants.COMMUNITY_ID);
-            Optional<CommunityEntity> communityData = communityEngagementRepository.findById(communityId);
+            Optional<CommunityEntity> communityData = communityEngagementRepository.findById(
+                communityId);
             if (!communityData.isPresent()) {
-                return returnErrorMsg(Constants.COMMUNITY_NOT_FOUND, HttpStatus.NOT_FOUND, response);
+                return returnErrorMsg(Constants.COMMUNITY_NOT_FOUND, HttpStatus.NOT_FOUND,
+                    response);
             }
 
             CommunityEntity communityEntity = communityData.get();
             if (!communityEntity.isActive()) {
-                return returnErrorMsg(Constants.COMMUNITY_IS_INACTIVE, HttpStatus.CONFLICT, response);
+                return returnErrorMsg(Constants.COMMUNITY_IS_INACTIVE, HttpStatus.CONFLICT,
+                    response);
             }
             ObjectNode data = (ObjectNode) communityEntity.getData();
-            if (data.get(Constants.STATUS).asText().equals(Constants.SUSPENDED)) {
+            if (data.has(Constants.STATUS) && data.get(Constants.STATUS).asText()
+                .equals(Constants.SUSPENDED)) {
                 return returnErrorMsg(Constants.COMMUNITY_SUSPENDED, HttpStatus.CONFLICT, response);
             }
 
@@ -1369,10 +1375,12 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             reportCheckData.put(Constants.USER_ID_LOWER_CASE, userId);
             reportCheckData.put(Constants.COMMUNITY_ID_LOWERCASE, communityId);
             List<Map<String, Object>> existingReports = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
-                Constants.KEYSPACE_SUNBIRD, Constants.USER_REPORTED_COMMUNITY, reportCheckData, null, null);
+                Constants.KEYSPACE_SUNBIRD, Constants.USER_REPORTED_COMMUNITY, reportCheckData,
+                null, null);
 
             if (!existingReports.isEmpty()) {
-                return returnErrorMsg("User has already reported this community", HttpStatus.CONFLICT, response);
+                return returnErrorMsg("User has already reported this community",
+                    HttpStatus.CONFLICT, response);
             }
 
             // Store user data in Cassandra
@@ -1380,26 +1388,35 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             userReportData.put(Constants.USER_ID_LOWER_CASE, userId);
             userReportData.put(Constants.COMMUNITY_ID_LOWERCASE, communityId);
             if (reportData.containsKey(Constants.REPORTED_REASON)) {
-                List<String> reportedReasonList = (List<String>) reportData.get(Constants.REPORTED_REASON);
+                List<String> reportedReasonList = (List<String>) reportData.get(
+                    Constants.REPORTED_REASON);
                 if (reportedReasonList != null && !reportedReasonList.isEmpty()) {
-                    StringBuilder reasonBuilder = new StringBuilder(String.join(", ", reportedReasonList));
+                    StringBuilder reasonBuilder = new StringBuilder(
+                        String.join(", ", reportedReasonList));
 
-                    if (reportedReasonList.contains(Constants.OTHERS) && reportData.containsKey(Constants.OTHER_REASON)) {
+                    if (reportedReasonList.contains(Constants.OTHERS) && reportData.containsKey(
+                        Constants.OTHER_REASON)) {
                         reasonBuilder.append(", ").append(reportData.get(Constants.OTHER_REASON));
                     }
                     userReportData.put(Constants.REASON, reasonBuilder.toString());
                 }
             }
             userReportData.put(Constants.CREATED_ON, new Timestamp(System.currentTimeMillis()));
-            cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD, Constants.USER_REPORTED_COMMUNITY, userReportData);
-            cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD, Constants.COMMUNITY_REPORTED_BY_USER, userReportData);
+            cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD,
+                Constants.USER_REPORTED_COMMUNITY, userReportData);
+            cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD,
+                Constants.COMMUNITY_REPORTED_BY_USER, userReportData);
 
             // Update the status of the discussion in Cassandra
             List<Map<String, Object>> reportedByUsers = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
-                Constants.KEYSPACE_SUNBIRD, Constants.COMMUNITY_REPORTED_BY_USER, Collections.singletonMap(Constants.COMMUNITY_ID_LOWERCASE, communityId), null, null);
+                Constants.KEYSPACE_SUNBIRD, Constants.COMMUNITY_REPORTED_BY_USER,
+                Collections.singletonMap(Constants.COMMUNITY_ID_LOWERCASE, communityId), null,
+                null);
 
             int reportCount = reportedByUsers.size();
-            String status = reportCount >= cbServerProperties.getReporCommunityUserLimit() ? Constants.SUSPENDED : Constants.REPORTED;
+            String status =
+                reportCount >= cbServerProperties.getReporCommunityUserLimit() ? Constants.SUSPENDED
+                    : Constants.REPORTED;
 
             Map<String, Object> statusUpdateData = new HashMap<>();
             statusUpdateData.put(Constants.STATUS, status);
@@ -1408,7 +1425,6 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             if (!data.get(Constants.STATUS).textValue().equals(status)) {
                 data.put(Constants.STATUS, status);
             }
-            data.put(Constants.REPORTED_BY, userId);
             if (data.has(Constants.REPORTED_BY)) {
                 JsonNode reportedByNode = data.get(Constants.REPORTED_BY);
                 ArrayNode reportedByArray;
@@ -1434,14 +1450,16 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             communityEngagementRepository.save(communityEntity);
             jsonNode.setAll(data);
             Map<String, Object> map = objectMapper.convertValue(jsonNode, Map.class);
-            esUtilService.updateDocument(Constants.INDEX_NAME, Constants.INDEX_TYPE, communityId, map,cbServerProperties.getElasticCommunityJsonPath());
+            esUtilService.updateDocument(Constants.INDEX_NAME, Constants.INDEX_TYPE, communityId,
+                map, cbServerProperties.getElasticCommunityJsonPath());
             cacheService.putCache(Constants.REDIS_KEY_PREFIX + communityId, jsonNode);
             map.put(Constants.COMMUNITY_ID, reportData.get(Constants.COMMUNITY_ID));
             response.setResult(map);
             return response;
         } catch (Exception e) {
             log.error("CommunityService::report: Failed to report community", e);
-            return returnErrorMsg(Constants.COMMUNITY_REPORT_FAILED, HttpStatus.INTERNAL_SERVER_ERROR, response);
+            return returnErrorMsg(Constants.COMMUNITY_REPORT_FAILED,
+                HttpStatus.INTERNAL_SERVER_ERROR, response);
         }
     }
 
@@ -1449,7 +1467,8 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
         StringBuffer errorMsg = new StringBuffer();
         List<String> errList = new ArrayList<>();
 
-        if (reportData.containsKey(Constants.COMMUNITY_ID) && StringUtils.isBlank((String) reportData.get(Constants.COMMUNITY_ID))){
+        if (reportData.containsKey(Constants.COMMUNITY_ID) && StringUtils.isBlank(
+            (String) reportData.get(Constants.COMMUNITY_ID))) {
             errList.add(Constants.COMMUNITY_ID);
         }
         if (reportData.containsKey(Constants.REPORTED_REASON)) {
