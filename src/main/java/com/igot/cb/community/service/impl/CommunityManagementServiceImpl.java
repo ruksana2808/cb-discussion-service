@@ -11,7 +11,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.igot.cb.authentication.util.AccessTokenValidator;
 import com.igot.cb.community.entity.CommunityCategory;
 import com.igot.cb.community.entity.CommunityEntity;
-import com.igot.cb.community.kafka.consumer.Consumer;
 import com.igot.cb.community.kafka.producer.Producer;
 import com.igot.cb.community.repository.CommunityCategoryRepository;
 import com.igot.cb.community.repository.CommunityEngagementRepository;
@@ -26,7 +25,6 @@ import com.igot.cb.transactional.cassandrautils.CassandraOperation;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
-import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -36,9 +34,7 @@ import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.search.aggregations.AggregationBuilders;
 import org.elasticsearch.search.aggregations.Aggregations;
-import org.elasticsearch.search.aggregations.BucketOrder;
 import org.elasticsearch.search.SearchHit;
-import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.aggregations.bucket.terms.Terms;
 import org.elasticsearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
@@ -57,7 +53,6 @@ import java.io.InputStream;
 import java.sql.Timestamp;
 import java.util.*;
 import org.springframework.util.CollectionUtils;
-import org.springframework.web.bind.annotation.RequestBody;
 
 /**
  * @author mahesh.vakkund
@@ -1337,6 +1332,146 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             throw new CustomException("Error while processing", e.getMessage(),
                 HttpStatus.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    @Override
+    public ApiResponse report(String token, Map<String, Object> reportData) {
+        log.info("CommunityService::report: Reporting community");
+        ApiResponse response = ProjectUtil.createDefaultResponse("community.report");
+        String errorMsg = validateReportPayload(reportData);
+        if (StringUtils.isNotEmpty(errorMsg)) {
+            return returnErrorMsg(errorMsg, HttpStatus.BAD_REQUEST, response);
+        }
+
+        String userId = accessTokenValidator.verifyUserToken(token);
+        if (StringUtils.isBlank(userId) || Constants.UNAUTHORIZED.equals(userId)) {
+            return returnErrorMsg(Constants.INVALID_AUTH_TOKEN, HttpStatus.UNAUTHORIZED, response);
+        }
+
+        try {
+            String communityId = (String) reportData.get(Constants.COMMUNITY_ID);
+            Optional<CommunityEntity> communityData = communityEngagementRepository.findById(communityId);
+            if (!communityData.isPresent()) {
+                return returnErrorMsg(Constants.COMMUNITY_NOT_FOUND, HttpStatus.NOT_FOUND, response);
+            }
+
+            CommunityEntity communityEntity = communityData.get();
+            if (!communityEntity.isActive()) {
+                return returnErrorMsg(Constants.COMMUNITY_IS_INACTIVE, HttpStatus.CONFLICT, response);
+            }
+            ObjectNode data = (ObjectNode) communityEntity.getData();
+            if (data.get(Constants.STATUS).asText().equals(Constants.SUSPENDED)) {
+                return returnErrorMsg(Constants.COMMUNITY_SUSPENDED, HttpStatus.CONFLICT, response);
+            }
+
+            // Check if the user has already reported the discussion
+            Map<String, Object> reportCheckData = new HashMap<>();
+            reportCheckData.put(Constants.USER_ID_LOWER_CASE, userId);
+            reportCheckData.put(Constants.COMMUNITY_ID_LOWERCASE, communityId);
+            List<Map<String, Object>> existingReports = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
+                Constants.KEYSPACE_SUNBIRD, Constants.USER_REPORTED_COMMUNITY, reportCheckData, null, null);
+
+            if (!existingReports.isEmpty()) {
+                return returnErrorMsg("User has already reported this community", HttpStatus.CONFLICT, response);
+            }
+
+            // Store user data in Cassandra
+            Map<String, Object> userReportData = new HashMap<>();
+            userReportData.put(Constants.USER_ID_LOWER_CASE, userId);
+            userReportData.put(Constants.COMMUNITY_ID_LOWERCASE, communityId);
+            if (reportData.containsKey(Constants.REPORTED_REASON)) {
+                List<String> reportedReasonList = (List<String>) reportData.get(Constants.REPORTED_REASON);
+                if (reportedReasonList != null && !reportedReasonList.isEmpty()) {
+                    StringBuilder reasonBuilder = new StringBuilder(String.join(", ", reportedReasonList));
+
+                    if (reportedReasonList.contains(Constants.OTHERS) && reportData.containsKey(Constants.OTHER_REASON)) {
+                        reasonBuilder.append(", ").append(reportData.get(Constants.OTHER_REASON));
+                    }
+                    userReportData.put(Constants.REASON, reasonBuilder.toString());
+                }
+            }
+            userReportData.put(Constants.CREATED_ON, new Timestamp(System.currentTimeMillis()));
+            cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD, Constants.USER_REPORTED_COMMUNITY, userReportData);
+            cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD, Constants.COMMUNITY_REPORTED_BY_USER, userReportData);
+
+            // Update the status of the discussion in Cassandra
+            List<Map<String, Object>> reportedByUsers = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
+                Constants.KEYSPACE_SUNBIRD, Constants.COMMUNITY_REPORTED_BY_USER, Collections.singletonMap(Constants.COMMUNITY_ID_LOWERCASE, communityId), null, null);
+
+            int reportCount = reportedByUsers.size();
+            String status = reportCount >= cbServerProperties.getReporCommunityUserLimit() ? Constants.SUSPENDED : Constants.REPORTED;
+
+            Map<String, Object> statusUpdateData = new HashMap<>();
+            statusUpdateData.put(Constants.STATUS, status);
+            ObjectNode jsonNode = objectMapper.createObjectNode();
+
+            if (!data.get(Constants.STATUS).textValue().equals(status)) {
+                data.put(Constants.STATUS, status);
+            }
+            data.put(Constants.REPORTED_BY, userId);
+            if (data.has(Constants.REPORTED_BY)) {
+                JsonNode reportedByNode = data.get(Constants.REPORTED_BY);
+                ArrayNode reportedByArray;
+
+                if (reportedByNode.isArray()) {
+                    // 'reportedBy' is already an array
+                    reportedByArray = (ArrayNode) reportedByNode;
+                } else {
+                    // 'reportedBy' is a single value, convert it to an array
+                    reportedByArray = objectMapper.createArrayNode();
+                    reportedByArray.add(reportedByNode);
+                }
+
+                // Append the new 'userId' to the array
+                reportedByArray.add(userId);
+                data.set(Constants.REPORTED_BY, reportedByArray);
+            } else {
+                // 'reportedBy' does not exist, create a new array with 'userId'
+                ArrayNode reportedByArray = objectMapper.createArrayNode();
+                reportedByArray.add(userId);
+                data.set(Constants.REPORTED_BY, reportedByArray);
+            }
+            communityEngagementRepository.save(communityEntity);
+            jsonNode.setAll(data);
+            Map<String, Object> map = objectMapper.convertValue(jsonNode, Map.class);
+            esUtilService.updateDocument(Constants.INDEX_NAME, Constants.INDEX_TYPE, communityId, map,cbServerProperties.getElasticCommunityJsonPath());
+            cacheService.putCache(Constants.REDIS_KEY_PREFIX + communityId, jsonNode);
+            map.put(Constants.COMMUNITY_ID, reportData.get(Constants.COMMUNITY_ID));
+            response.setResult(map);
+            return response;
+        } catch (Exception e) {
+            log.error("CommunityService::report: Failed to report community", e);
+            return returnErrorMsg(Constants.COMMUNITY_REPORT_FAILED, HttpStatus.INTERNAL_SERVER_ERROR, response);
+        }
+    }
+
+    private String validateReportPayload(Map<String, Object> reportData) {
+        StringBuffer errorMsg = new StringBuffer();
+        List<String> errList = new ArrayList<>();
+
+        if (reportData.containsKey(Constants.COMMUNITY_ID) && StringUtils.isBlank((String) reportData.get(Constants.COMMUNITY_ID))){
+            errList.add(Constants.COMMUNITY_ID);
+        }
+        if (reportData.containsKey(Constants.REPORTED_REASON)) {
+            Object reportedReasonObj = reportData.get(Constants.REPORTED_REASON);
+            if (reportedReasonObj instanceof List) {
+                List<String> reportedReasonList = (List<String>) reportedReasonObj;
+                if (reportedReasonList.isEmpty()) {
+                    errList.add(Constants.REPORTED_REASON);
+                } else if (reportedReasonList.contains(Constants.OTHERS)) {
+                    if (!reportData.containsKey(Constants.OTHER_REASON) ||
+                        StringUtils.isBlank((String) reportData.get(Constants.OTHER_REASON))) {
+                        errList.add(Constants.OTHER_REASON);
+                    }
+                }
+            } else {
+                errList.add(Constants.REPORTED_REASON);
+            }
+        }
+        if (!errList.isEmpty()) {
+            errorMsg.append("Failed Due To Missing Params - ").append(errList).append(".");
+        }
+        return errorMsg.toString();
     }
 
 

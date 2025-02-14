@@ -43,4 +43,6 @@ public interface CommunityManagementService {
     ApiResponse lisAllCategoryWithSubCat();
 
     ApiResponse getPopularCommunitiesByField(Map<String, Object> payload);
+
+    ApiResponse report(String token, Map<String, Object> reportData);
 }

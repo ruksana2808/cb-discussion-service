@@ -163,6 +163,20 @@ public class Constants {
     public static final String CMMUNITY_USER_REDIS_PREFIX = "users_communinty_";
     public static final String COUNT_OF_ANSWER_POST_CREATED = "countOfAnswerPost";
     public static final String FIELD = "field";
+    public static final String COMMUNITY_NOT_FOUND = "Community not found";
+    public static final String INVALID_AUTH_TOKEN = "invalid auth token Please supply a valid auth token";
+    public static final String COMMUNITY_IS_INACTIVE = "Community is inactive";
+    public static final String SUSPENDED = "suspended";
+    public static final String COMMUNITY_SUSPENDED = "discussion Already suspended";
+    public static final String REPORTED_REASON = "reportedDueTo";
+    public static final String OTHER_REASON = "otherReasons";
+    public static final String OTHERS = "Others";
+    public static final String REASON = "reason";
+    public static final String USER_REPORTED_COMMUNITY= "user_reported_communities";
+    public static final String COMMUNITY_REPORTED_BY_USER = "communities_reportedby_user";
+    public static final String REPORTED = "reported";
+    public static final String COMMUNITY_REPORT_FAILED = "Failed to report discussion";
+    public static final String REPORTED_BY = "reportedBy";
 
     private Constants() {
     }
