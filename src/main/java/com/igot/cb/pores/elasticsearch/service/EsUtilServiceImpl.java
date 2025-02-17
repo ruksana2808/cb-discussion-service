@@ -739,6 +739,56 @@ public class EsUtilServiceImpl implements EsUtilService {
         return searchResult;
     }
 
+    @Override
+    public SearchResult searchDocumentsByField(String indexName, String field, int size,
+        String order) {
+        try {
+            // Create a terms aggregation for the specified field
+            TermsAggregationBuilder fieldAgg = AggregationBuilders.terms(field + "_agg")
+                .field(field) // Use the .keyword field for exact matches
+                .size(size); // Set the size of the aggregation
+
+            // Add the aggregation to the search source builder
+            SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder()
+                .size(0) // Do not return regular hits, we only need aggregations
+                .aggregation(fieldAgg);
+
+            // Create the search request
+            SearchRequest searchRequest = new SearchRequest(indexName);
+            searchRequest.source(searchSourceBuilder);
+
+            // Execute the search request
+            SearchResponse response = elasticsearchClient.search(searchRequest, RequestOptions.DEFAULT);
+            List<Map<String, Object>> paginatedResult = extractPaginatedResult(response);
+            SearchCriteria searchCriteria = new SearchCriteria();
+            List<String> facets = new ArrayList<>();
+            facets.add(field);
+            searchCriteria.setFacets(facets);
+            Map<String, List<FacetDTO>> fieldAggregations =
+                extractFacetDataForList(response, searchCriteria);
+            SearchResult searchResult= new SearchResult();
+            searchResult.setData(objectMapper.valueToTree(paginatedResult));
+            searchResult.setFacets(fieldAggregations);
+            searchResult.setTotalCount(response.getHits().getTotalHits().value);
+            return searchResult;
+        } catch (Exception e) {
+            logger.error("Error while fetching details from elastic search");
+            return null;
+        }
+
+    }
+
+    @Override
+    public SearchResponse popularCommunities(SearchRequest searchRequest, RequestOptions aDefault) {
+        try {
+            SearchResponse response = elasticsearchClient.search(searchRequest,
+                RequestOptions.DEFAULT);
+            return response;
+        } catch (Exception e) {
+            logger.error("Error while fetching details from elastic search");
+            return null;
+        }
+    }
 
 
     /**
@@ -749,6 +799,7 @@ public class EsUtilServiceImpl implements EsUtilService {
             documents.add(hit.getSourceAsMap());
         }
     }
+
 
 
 

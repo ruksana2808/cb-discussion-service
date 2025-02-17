@@ -129,4 +129,17 @@ public class CommunityController {
         ApiResponse response = communityManagementService.lisAllCategoryWithSubCat();
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
+
+    @PostMapping("/popular")
+    public ResponseEntity<ApiResponse> getTopCommunitiesByField(@RequestBody Map<String, Object> payload) {
+        ApiResponse response = communityManagementService.getPopularCommunitiesByField(payload);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    @PostMapping("/report")
+    public ResponseEntity<ApiResponse> report(@RequestBody Map<String, Object> reportData,
+        @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = communityManagementService.report(token, reportData);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

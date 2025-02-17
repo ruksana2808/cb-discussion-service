@@ -22,4 +22,7 @@ public class CbServerProperties {
 
     @Value("${elastic.required.field.community.category.json.path}")
     private String elasticCommunityCategoryJsonPath;
+
+    @Value("${report.community.user.limit}")
+    private int reporCommunityUserLimit;
 }

@@ -89,5 +89,8 @@
   },
   "countOfAnswerPost": {
     "type": "long"
+  },
+  "reportedBy": {
+    "type": "keyword"
   }
 }
