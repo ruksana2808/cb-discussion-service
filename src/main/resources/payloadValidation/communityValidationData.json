@@ -31,10 +31,7 @@
         "type": "string"
       }
     },
-    "category": {
-      "type": "string"
-    },
-    "subCategory": {
+    "topicName": {
       "type": "string"
     },
     "countOfPeopleJoined": {
@@ -43,11 +40,8 @@
     "communityTagId": {
       "type": "string"
     },
-    "communityCategoryId": {
-      "type": "string"
-    },
-    "communitySubCategoryId": {
-      "type": "string"
+    "topicId": {
+      "type": "integer"
     },
     "createdOn": {
       "type": "date",
@@ -68,6 +62,96 @@
     },
     "updatedUserId": {
       "type": "string"
+    },
+    "communityGuideLines": {
+      "type": "string"
+    },
+    "competencyArea": {
+      "type": "string"
+    },
+    "competencyTheme": {
+      "type": "string"
+    },
+    "competencySubTheme": {
+      "type": "string"
+    },
+    "countOfPeopleLiked": {
+      "type": "integer"
+    },
+    "countOfPostCreated": {
+      "type": "integer"
+    },
+    "competencies_v6": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "competencyAreaIdentifier": {
+            "type": "string"
+          },
+          "competencyAreaRefId": {
+            "type": "string"
+          },
+          "competencySubThemeAdditionalProperties": {
+            "type": "object",
+            "properties": {
+              "displayName": {
+                "type": "string"
+              },
+              "timeStamp": {
+                "type": "integer"
+              }
+            }
+          },
+          "competencyThemeRefId": {
+            "type": "string"
+          },
+          "competencyAreaDescription": {
+            "type": "string"
+          },
+          "competencySubThemeIdentifier": {
+            "type": "string"
+          },
+          "competencySubThemeDescription": {
+            "type": "string"
+          },
+          "competencyThemeName": {
+            "type": "string"
+          },
+          "competencyThemeIdentifier": {
+            "type": "string"
+          },
+          "competencyThemeType": {
+            "type": "string"
+          },
+          "competencySubThemeName": {
+            "type": "string"
+          },
+          "competencySubThemeRefId": {
+            "type": "string"
+          },
+          "competencyThemeAdditionalProperties": {
+            "type": "object",
+            "properties": {
+              "displayName": {
+                "type": "string"
+              },
+              "timeStamp": {
+                "type": "integer"
+              }
+            }
+          },
+          "competencyAreaName": {
+            "type": "string"
+          },
+          "competencyThemeDescription": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "countOfAnswerPost": {
+      "type": "integer"
     }
   },
   "required": [
@@ -75,11 +159,8 @@
     "description",
     "communityAccessLevel",
     "orgId",
-    "posterImageUrl",
-    "imageUrl",
     "tags",
-    "category",
-    "subCategory",
+    "topicName",
     "createdUserId"
   ],
   "additionalProperties": false

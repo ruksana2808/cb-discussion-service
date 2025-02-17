@@ -96,6 +96,10 @@ public class AccessTokenValidator {
                     userId = userId.substring(userId.lastIndexOf(":") + 1);
                 }
             }
+            if (Constants.UNAUTHORIZED.equalsIgnoreCase(userId)) {
+                userId = null;
+            }
+
         } catch (Exception ex) {
             logger.error("Exception in verifyUserAccessToken: verify ", ex);
         }

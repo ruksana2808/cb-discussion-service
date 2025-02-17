@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "categoryId": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "categoryName": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 256
+    },
+    "description": {
+      "type": "string"
+    },
+    "parentId": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "createdAt": {
+      "type": "date",
+      "format": [
+        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+        "epoch_millis"
+      ]
+    },
+    "lastUpdatedAt": {
+      "type": "date",
+      "format": [
+        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+        "epoch_millis"
+      ]
+    },
+    "createdUserId": {
+      "type": "string"
+    },
+    "updatedUserId": {
+      "type": "string"
+    },
+    "departmentId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "categoryName",
+    "description",
+    "departmentId"
+  ],
+  "additionalProperties": false
+}

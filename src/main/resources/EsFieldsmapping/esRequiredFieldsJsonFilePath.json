@@ -3,7 +3,12 @@
     "type": "keyword"
   },
   "communityName": {
-    "type": "keyword"
+    "type": "text",
+    "fields": {
+      "raw": {
+        "type": "keyword"
+      }
+    }
   },
   "status": {
     "type": "keyword"
@@ -26,23 +31,20 @@
   "tags": {
     "type": "keyword"
   },
-  "category": {
-    "type": "keyword"
-  },
-  "subCategory": {
+  "topicName": {
     "type": "keyword"
   },
   "countOfPeopleJoined": {
-    "type": "integer"
+    "type": "long"
+  },
+  "countOfPeopleLiked": {
+    "type": "long"
   },
   "communityTagId": {
     "type": "keyword"
   },
-  "communityCategoryId": {
-    "type": "keyword"
-  },
-  "communitySubCategoryId": {
-    "type": "keyword"
+  "topicId": {
+    "type": "long"
   },
   "createdOn": {
     "type": "date",
@@ -62,6 +64,33 @@
     "type": "keyword"
   },
   "updatedByUserId": {
+    "type": "keyword"
+  },
+  "communityGuideLines": {
+    "type": "keyword"
+  },
+  "searchTags": {
+    "type": "keyword"
+  },
+  "countOfPostCreated": {
+    "type": "long"
+  },
+  "competencies_v6": {
+    "type": "keyword"
+  },
+  "competencyArea": {
+    "type": "keyword"
+  },
+  "competencyTheme": {
+    "type": "keyword"
+  },
+  "competencySubTheme": {
+    "type": "keyword"
+  },
+  "countOfAnswerPost": {
+    "type": "long"
+  },
+  "reportedBy": {
     "type": "keyword"
   }
 }

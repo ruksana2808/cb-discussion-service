@@ -11,6 +11,7 @@ import com.igot.cb.pores.exceptions.CustomException;
 import com.igot.cb.pores.util.CbServerProperties;
 import com.igot.cb.pores.util.Constants;
 import com.networknt.schema.JsonSchemaFactory;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -21,18 +22,29 @@ import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.delete.DeleteResponse;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.index.IndexResponse;
+import org.elasticsearch.action.search.ClearScrollRequest;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.action.search.SearchScrollRequest;
 import org.elasticsearch.action.support.WriteRequest;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.client.indices.GetIndexRequest;
+import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.query.*;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
+import org.elasticsearch.search.aggregations.Aggregation;
 import org.elasticsearch.search.aggregations.AggregationBuilders;
+import org.elasticsearch.search.aggregations.Aggregations;
+import org.elasticsearch.search.aggregations.ParsedMultiBucketAggregation;
+import org.elasticsearch.search.aggregations.bucket.MultiBucketsAggregation;
 import org.elasticsearch.search.aggregations.bucket.terms.Terms;
+import org.elasticsearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
+import org.elasticsearch.search.aggregations.metrics.ParsedTopHits;
+import org.elasticsearch.search.aggregations.metrics.TopHits;
+import org.elasticsearch.search.aggregations.metrics.TopHitsAggregationBuilder;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.sort.SortBuilders;
 import org.elasticsearch.search.sort.SortOrder;
@@ -148,10 +160,15 @@ public class EsUtilServiceImpl implements EsUtilService {
         if (searchString != null && searchString.length() > cbServerProperties.getSearchStringMaxRegexLength()) {
             throw new RuntimeException("The length of the search string exceeds the allowed maximum of " + cbServerProperties.getSearchStringMaxRegexLength() + " characters.");
         }
-        SearchSourceBuilder searchSourceBuilder = buildSearchSourceBuilder(searchCriteria);
-        SearchRequest searchRequest = new SearchRequest(esIndexName);
-        searchRequest.source(searchSourceBuilder);
         try {
+            SearchResult searchResult = new SearchResult();
+            boolean indexExists = elasticsearchClient.indices().exists(new GetIndexRequest(esIndexName), RequestOptions.DEFAULT);
+            if (!indexExists) {
+                return searchResult;
+            }
+            SearchSourceBuilder searchSourceBuilder = buildSearchSourceBuilder(searchCriteria);
+            SearchRequest searchRequest = new SearchRequest(esIndexName);
+            searchRequest.source(searchSourceBuilder);
             if (searchSourceBuilder != null) {
                 int pageNumber = searchCriteria.getPageNumber();
                 int pageSize = searchCriteria.getPageSize();
@@ -166,7 +183,6 @@ public class EsUtilServiceImpl implements EsUtilService {
             List<Map<String, Object>> paginatedResult = extractPaginatedResult(paginatedSearchResponse);
             Map<String, List<FacetDTO>> fieldAggregations =
                     extractFacetData(paginatedSearchResponse, searchCriteria);
-            SearchResult searchResult = new SearchResult();
             searchResult.setData(objectMapper.valueToTree(paginatedResult));
             searchResult.setFacets(fieldAggregations);
             searchResult.setTotalCount(paginatedSearchResponse.getHits().getTotalHits().value);
@@ -196,11 +212,70 @@ public class EsUtilServiceImpl implements EsUtilService {
         return fieldAggregations;
     }
 
+    private Map<String, List<FacetDTO>> extractFacetDataForList(
+        SearchResponse searchResponse, SearchCriteria searchCriteria) {
+        Map<String, List<FacetDTO>> fieldAggregations = new HashMap<>();
+        if (searchCriteria.getFacets() != null) {
+            for (String field : searchCriteria.getFacets()) {
+                // Extract aggregation using the field name
+                Aggregation aggregation = searchResponse.getAggregations().get("topicId");
+
+                // Ensure the aggregation exists and is of type Terms
+                if (aggregation instanceof Terms) {
+                    Terms fieldAggregation = (Terms) aggregation;
+                    List<FacetDTO> fieldValueList = new ArrayList<>();
+
+                    for (Terms.Bucket bucket : fieldAggregation.getBuckets()) {
+                        String key = bucket.getKeyAsString();
+                        long docCount = bucket.getDocCount();
+
+                        // Check for nested top hits aggregation
+                        Aggregation topHitsAgg = bucket.getAggregations().get("top_hits#topNames");
+                        List<String> topNames = new ArrayList<>();
+
+                        if (topHitsAgg instanceof TopHits) {
+                            TopHits topHits = (TopHits) topHitsAgg;
+                            SearchHits hits = topHits.getHits();
+
+                            for (SearchHit hit : hits.getHits()) {
+                                Map<String, Object> source = hit.getSourceAsMap();
+                                topNames.add((String) source.get(Constants.TOPIC_ID));
+                            }
+                        }
+
+                        // Add FacetDTO with the key, doc count, and top names
+                        FacetDTO facetDTO = new FacetDTO(key, docCount);
+                        fieldValueList.add(facetDTO);
+                    }
+
+                    fieldAggregations.put(field, fieldValueList);
+                }
+            }
+        }
+        return fieldAggregations;
+    }
+
+
     private List<Map<String, Object>> extractPaginatedResult(SearchResponse paginatedSearchResponse) {
         SearchHit[] hits = paginatedSearchResponse.getHits().getHits();
         List<Map<String, Object>> paginatedResult = new ArrayList<>();
         for (SearchHit hit : hits) {
             paginatedResult.add(hit.getSourceAsMap());
+        }
+        // Process aggregations
+        Aggregations aggregations = paginatedSearchResponse.getAggregations();
+        if (aggregations != null) {
+            ParsedMultiBucketAggregation topicIdAgg = aggregations.get(Constants.TOPIC_ID);
+            if (topicIdAgg != null) {
+                for (MultiBucketsAggregation.Bucket bucket : topicIdAgg.getBuckets()) {
+                    ParsedTopHits topHits = bucket.getAggregations().get("topNames");
+                    if (topHits != null) {
+                        for (SearchHit hit : topHits.getHits().getHits()) {
+                            paginatedResult.add(hit.getSourceAsMap());
+                        }
+                    }
+                }
+            }
         }
         return paginatedResult;
     }
@@ -246,6 +321,8 @@ public class EsUtilServiceImpl implements EsUtilService {
                                             field + Constants.KEYWORD, ((ArrayList<?>) value).toArray()));
                         } else if (value instanceof String) {
                             boolQueryBuilder.must(QueryBuilders.termsQuery(field + Constants.KEYWORD, value));
+                        } else if (value instanceof Integer) {
+                            boolQueryBuilder.must(QueryBuilders.termQuery(field, value));
                         } else if (value instanceof Map) {
                             Map<String, Object> nestedMap = (Map<String, Object>) value;
                             if (isRangeQuery(nestedMap)) {
@@ -301,8 +378,14 @@ public class EsUtilServiceImpl implements EsUtilService {
         if (isNotBlank(searchCriteria.getOrderBy()) && isNotBlank(searchCriteria.getOrderDirection())) {
             SortOrder sortOrder =
                     Constants.ASC.equals(searchCriteria.getOrderDirection()) ? SortOrder.ASC : SortOrder.DESC;
-            searchSourceBuilder.sort(
+            if (searchCriteria.getOrderBy().equalsIgnoreCase(Constants.COUNT_OF_PEOPLE_JOINED)) {
+                searchSourceBuilder.sort(
+                    SortBuilders.fieldSort(searchCriteria.getOrderBy()).order(sortOrder).unmappedType("long"));
+            } else {
+                // Handle other types (like String or others)
+                searchSourceBuilder.sort(
                     SortBuilders.fieldSort(searchCriteria.getOrderBy() + Constants.KEYWORD).order(sortOrder));
+            }
         }
     }
 
@@ -347,8 +430,15 @@ public class EsUtilServiceImpl implements EsUtilService {
             List<String> facets, SearchSourceBuilder searchSourceBuilder) {
         if (facets != null) {
             for (String field : facets) {
-                searchSourceBuilder.aggregation(
+                if ("topicId".equals(field)) {
+                    // Handle integer field directly without ".keyword"
+                    searchSourceBuilder.aggregation(
+                        AggregationBuilders.terms(field + "_agg").field(field).size(250));
+                } else {
+                    // Default behavior for other fields
+                    searchSourceBuilder.aggregation(
                         AggregationBuilders.terms(field + "_agg").field(field + ".keyword").size(250));
+                }
             }
         }
     }
@@ -536,6 +626,181 @@ public class EsUtilServiceImpl implements EsUtilService {
                 HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
+    @Override
+    public List<Map<String, Object>> matchAll(String esIndexName, List<Integer> parentIds)
+        throws IOException {
+        List<Map<String, Object>> documents = new ArrayList<>();
+        String scrollId = null;
+
+        try {
+            // Check if the index exists
+            boolean indexExists = elasticsearchClient.indices()
+                .exists(new GetIndexRequest(esIndexName), RequestOptions.DEFAULT);
+            if (!indexExists) {
+                return documents;
+            }
+
+            // Build the query
+            SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+            sourceBuilder.query(QueryBuilders.boolQuery()
+                    .must(QueryBuilders.matchAllQuery()) // Match all documents
+                    .filter(QueryBuilders.termsQuery(Constants.PARENT_ID,
+                        parentIds)) // Filter where parentId is in the list
+                    .filter(QueryBuilders.termQuery(Constants.STATUS, Constants.ACTIVE))
+                // Filter where status is 'active'
+            );
+            // Specify the fields to fetch
+            sourceBuilder.fetchSource(
+                new String[]{Constants.CATEGORY_ID, Constants.CATEGORY_NAME, Constants.PARENT_ID},
+                null);
+            sourceBuilder.size(500); // Fetch in batches of 500
+
+            // Create search request with scroll
+            SearchRequest searchRequest = new SearchRequest(esIndexName);
+            searchRequest.source(sourceBuilder);
+            searchRequest.scroll(TimeValue.timeValueMinutes(5)); // Set scroll timeout
+
+            // Execute initial search request
+            SearchResponse searchResponse = elasticsearchClient.search(searchRequest,
+                RequestOptions.DEFAULT);
+            scrollId = searchResponse.getScrollId();
+
+            // Process hits in the initial response
+            processSearchHits(searchResponse, documents);
+
+            // Fetch subsequent batches using the scroll API
+            while (searchResponse.getHits().getHits().length > 0) {
+                SearchScrollRequest scrollRequest = new SearchScrollRequest(scrollId);
+                scrollRequest.scroll(TimeValue.timeValueMinutes(5));
+                searchResponse = elasticsearchClient.scroll(scrollRequest, RequestOptions.DEFAULT);
+                scrollId = searchResponse.getScrollId();
+
+                processSearchHits(searchResponse, documents);
+            }
+
+        } catch (Exception e) {
+            logger.error(
+                "Error while listing all categories with subCategories in matchAll method: {}",
+                e.getMessage(), e);
+            throw new CustomException(Constants.ERROR, "Error while processing",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        } finally {
+            // Clear scroll
+            if (scrollId != null) {
+                ClearScrollRequest clearScrollRequest = new ClearScrollRequest();
+                clearScrollRequest.addScrollId(scrollId);
+                elasticsearchClient.clearScroll(clearScrollRequest, RequestOptions.DEFAULT);
+            }
+        }
+
+        return documents;
+    }
+
+    @Override
+    public SearchResult fetchTopCommunitiesForTopics(List<Integer> parentTopics, String indexName) throws IOException{
+        // Create a terms query to filter documents based on parentTopics from UI
+        TermsQueryBuilder termsQuery = QueryBuilders.termsQuery(Constants.TOPIC_ID, parentTopics);
+
+        // Create the terms aggregation
+        TermsAggregationBuilder parentTopicsAgg = AggregationBuilders.terms(Constants.TOPIC_ID)
+            .field(Constants.TOPIC_ID) // Use the .keyword field for exact matches
+            .size(parentTopics.size()); // Size based on the number of parent topics provided
+
+        // Create the top hits sub-aggregation
+        TopHitsAggregationBuilder topHitsAgg = AggregationBuilders.topHits("topNames")
+            .size(5); // Fetch 5 items for each distinct parent topic
+
+        // Add the sub-aggregation to the parent aggregation
+        parentTopicsAgg.subAggregation(topHitsAgg);
+
+        // Build the search request with the filter
+        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder()
+            .query(termsQuery) // Apply the terms query as a filter
+            .size(0) // Do not return regular hits, we only need aggregations
+            .aggregation(parentTopicsAgg);
+
+        SearchRequest searchRequest = new SearchRequest(Constants.INDEX_NAME);
+        searchRequest.source(searchSourceBuilder);
+
+        // Execute the search request
+        SearchResponse response = elasticsearchClient.search(searchRequest, RequestOptions.DEFAULT);
+        List<Map<String, Object>> paginatedResult = extractPaginatedResult(response);
+        SearchCriteria searchCriteria = new SearchCriteria();
+        List<String> facets = new ArrayList<>();
+        facets.add(Constants.TOPIC_ID);
+        searchCriteria.setFacets(facets);
+        Map<String, List<FacetDTO>> fieldAggregations =
+            extractFacetDataForList(response, searchCriteria);
+        SearchResult searchResult= new SearchResult();
+        searchResult.setData(objectMapper.valueToTree(paginatedResult));
+        searchResult.setFacets(fieldAggregations);
+        searchResult.setTotalCount(response.getHits().getTotalHits().value);
+        return searchResult;
+    }
+
+    @Override
+    public SearchResult searchDocumentsByField(String indexName, String field, int size,
+        String order) {
+        try {
+            // Create a terms aggregation for the specified field
+            TermsAggregationBuilder fieldAgg = AggregationBuilders.terms(field + "_agg")
+                .field(field) // Use the .keyword field for exact matches
+                .size(size); // Set the size of the aggregation
+
+            // Add the aggregation to the search source builder
+            SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder()
+                .size(0) // Do not return regular hits, we only need aggregations
+                .aggregation(fieldAgg);
+
+            // Create the search request
+            SearchRequest searchRequest = new SearchRequest(indexName);
+            searchRequest.source(searchSourceBuilder);
+
+            // Execute the search request
+            SearchResponse response = elasticsearchClient.search(searchRequest, RequestOptions.DEFAULT);
+            List<Map<String, Object>> paginatedResult = extractPaginatedResult(response);
+            SearchCriteria searchCriteria = new SearchCriteria();
+            List<String> facets = new ArrayList<>();
+            facets.add(field);
+            searchCriteria.setFacets(facets);
+            Map<String, List<FacetDTO>> fieldAggregations =
+                extractFacetDataForList(response, searchCriteria);
+            SearchResult searchResult= new SearchResult();
+            searchResult.setData(objectMapper.valueToTree(paginatedResult));
+            searchResult.setFacets(fieldAggregations);
+            searchResult.setTotalCount(response.getHits().getTotalHits().value);
+            return searchResult;
+        } catch (Exception e) {
+            logger.error("Error while fetching details from elastic search");
+            return null;
+        }
+
+    }
+
+    @Override
+    public SearchResponse popularCommunities(SearchRequest searchRequest, RequestOptions aDefault) {
+        try {
+            SearchResponse response = elasticsearchClient.search(searchRequest,
+                RequestOptions.DEFAULT);
+            return response;
+        } catch (Exception e) {
+            logger.error("Error while fetching details from elastic search");
+            return null;
+        }
+    }
+
+
+    /**
+     * Helper method to process search hits and add them to the documents list.
+     */
+    private void processSearchHits(SearchResponse searchResponse, List<Map<String, Object>> documents) {
+        for (SearchHit hit : searchResponse.getHits()) {
+            documents.add(hit.getSourceAsMap());
+        }
+    }
+
+
 
 
 }

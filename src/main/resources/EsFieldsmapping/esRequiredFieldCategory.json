@@ -1,0 +1,48 @@
+{
+  "categoryId": {
+    "type": "keyword"
+  },
+  "categoryName": {
+    "type": "text",
+    "fields": {
+      "raw": {
+        "type": "keyword"
+      }
+    }
+  },
+  "parentId": {
+    "type": "integer"
+  },
+  "description": {
+    "type": "text"
+  },
+  "status": {
+    "type": "keyword"
+  },
+  "createdAt": {
+    "type": "date",
+    "format": [
+      "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+      "epoch_millis"
+    ]
+  },
+  "lastUpdatedAt": {
+    "type": "date",
+    "format": [
+      "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+      "epoch_millis"
+    ]
+  },
+  "createdByUserId": {
+    "type": "keyword"
+  },
+  "updatedByUserId": {
+    "type": "keyword"
+  },
+  "subCategory": {
+    "type": "keyword"
+  },
+  "departmentId": {
+    "type": "keyword"
+  }
+}

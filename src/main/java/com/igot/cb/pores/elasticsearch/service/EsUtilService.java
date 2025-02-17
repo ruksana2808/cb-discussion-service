@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.igot.cb.pores.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.pores.elasticsearch.dto.SearchResult;
 import org.elasticsearch.action.bulk.BulkResponse;
+import org.elasticsearch.action.search.SearchRequest;
+import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 
@@ -26,4 +29,11 @@ public interface EsUtilService {
 
   public BulkResponse saveAll(String esIndexName, String type, List<JsonNode> entities) throws IOException;
 
+  List<Map<String, Object>> matchAll(String esIndexName , List<Integer> parentIds) throws IOException;
+
+  SearchResult fetchTopCommunitiesForTopics(List<Integer> topicIds, String indexName) throws IOException;
+
+  SearchResult searchDocumentsByField(String indexName, String field, int size, String order);
+
+  SearchResponse popularCommunities(SearchRequest searchRequest, RequestOptions aDefault);
 }
