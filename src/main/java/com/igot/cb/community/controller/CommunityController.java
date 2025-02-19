@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * @author mahesh.vakkund
@@ -141,5 +142,13 @@ public class CommunityController {
         @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
         ApiResponse response = communityManagementService.report(token, reportData);
         return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    @PostMapping("/fileUpload/{communityId}")
+    public ResponseEntity<ApiResponse> uploadFile(
+        @RequestParam(value = "file", required = true) MultipartFile multipartFile,
+        @PathVariable(value = "communityId", required = true) String communityId)  {
+        ApiResponse uploadResponse = communityManagementService.uploadFile(multipartFile, communityId);
+        return new ResponseEntity<>(uploadResponse, uploadResponse.getResponseCode());
     }
 }

@@ -94,9 +94,22 @@
 			<artifactId>sonar-maven-plugin</artifactId>
 			<version>3.8.0.2131</version>
 		</dependency>
+
 		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-data-elasticsearch</artifactId>
+			<groupId>org.elasticsearch</groupId>
+			<artifactId>elasticsearch</artifactId>
+			<version>6.8.0</version>
+		</dependency>
+		<dependency>
+			<groupId> org.elasticsearch.client</groupId>
+			<artifactId>elasticsearch-rest-high-level-client</artifactId>
+			<version>6.8.0</version>
+			<exclusions>
+				<exclusion>
+					<groupId>org.elasticsearch</groupId>
+					<artifactId>elasticsearch</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.kafka</groupId>
@@ -119,9 +132,9 @@
 			<version>2.0</version>
 		</dependency>
 		<dependency>
-			<groupId>org.sunbird</groupId>
-			<artifactId>cloud-store-sdk</artifactId>
-			<version>1.3.0</version>
+			<groupId>net.karmayogibharat</groupId>
+			<artifactId>cloud-store-sdk_2.11</artifactId>
+			<version>1.4.6</version>
 		</dependency>
 		<!-- https://mvnrepository.com/artifact/org.keycloak/keycloak-common -->
 		<dependency>

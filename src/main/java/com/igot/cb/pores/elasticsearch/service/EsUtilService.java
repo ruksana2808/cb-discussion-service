@@ -36,4 +36,6 @@ public interface EsUtilService {
   SearchResult searchDocumentsByField(String indexName, String field, int size, String order);
 
   SearchResponse popularCommunities(SearchRequest searchRequest, RequestOptions aDefault);
+
+  Boolean updateUserIndex (String userId, String communityId, Boolean append);
 }

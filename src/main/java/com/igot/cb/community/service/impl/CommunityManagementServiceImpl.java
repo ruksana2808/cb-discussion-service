@@ -25,8 +25,11 @@ import com.igot.cb.transactional.cassandrautils.CassandraOperation;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import javax.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.elasticsearch.action.search.SearchRequest;
@@ -53,6 +56,11 @@ import java.io.InputStream;
 import java.sql.Timestamp;
 import java.util.*;
 import org.springframework.util.CollectionUtils;
+import org.springframework.web.multipart.MultipartFile;
+import org.sunbird.cloud.storage.BaseStorageService;
+import org.sunbird.cloud.storage.factory.StorageConfig;
+import org.sunbird.cloud.storage.factory.StorageServiceFactory;
+import scala.Option;
 
 /**
  * @author mahesh.vakkund
@@ -98,6 +106,15 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
 
     @Autowired
     private RedisTemplate<String, Object> objectRedisTemplate;
+
+    private BaseStorageService storageService = null;
+
+    @PostConstruct
+    public void init() {
+        if (storageService == null) {
+            storageService = StorageServiceFactory.getStorageService(new StorageConfig(cbServerProperties.getCloudStorageTypeName(), cbServerProperties.getCloudStorageKey(), cbServerProperties.getCloudStorageSecret().replace("\\n", "\n"), Option.apply(cbServerProperties.getCloudStorageEndpoint()), Option.empty()));
+        }
+    }
 
 
     @Override
@@ -295,7 +312,6 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
     public ApiResponse update(JsonNode communityDetails, String authToken) {
         log.info("CommunityEngagementService:update:updating community");
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_UPDATE);
-        validatePayload(Constants.PAYLOAD_VALIDATION_FILE, communityDetails);
         try {
             String userId = accessTokenValidator.verifyUserToken(authToken);
             if (StringUtils.isBlank(userId)) {
@@ -388,6 +404,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 dataMap.put(Constants.COMMUNITY, optCommunity.get());
                 dataMap.put(Constants.USER_ID, userId);
                 producer.push(userCountUpdateTopic, dataMap);
+                esUtilService.updateUserIndex(userId,communityId,true);
                 return response;
             } else {
                 // Check if STATUS is false in the existing record
@@ -408,6 +425,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                     dataMap.put(Constants.COMMUNITY, optCommunity.get());
                     dataMap.put(Constants.USER_ID, userId);
                     producer.push(userCountUpdateTopic, dataMap);
+                    esUtilService.updateUserIndex(userId,communityId,true);
                     return response;
 
                 } else {
@@ -747,6 +765,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 // Delete the key from Redis
                 objectRedisTemplate.delete(redisKey);
                 cacheService.deleteUserFromHash(Constants.CMMUNITY_USER_REDIS_PREFIX+communityId,Constants.USER_PREFIX+userId);
+                esUtilService.updateUserIndex(userId,communityId,false);
                 return response;
             } else {
                 response.setResponseCode(HttpStatus.BAD_REQUEST);
@@ -1460,6 +1479,63 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             log.error("CommunityService::report: Failed to report community", e);
             return returnErrorMsg(Constants.COMMUNITY_REPORT_FAILED,
                 HttpStatus.INTERNAL_SERVER_ERROR, response);
+        }
+    }
+
+    @Override
+    public ApiResponse uploadFile(MultipartFile mFile, String communityId) {
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.COMMUNITY_UPLOAD_FILE);
+        if (mFile.isEmpty()) {
+            return returnErrorMsg(Constants.COMMUNITY_FILE_EMPTY, HttpStatus.BAD_REQUEST, response);
+        }
+        if (StringUtils.isBlank(communityId)) {
+            return returnErrorMsg(Constants.INVALID_COMMUNITY_ID, HttpStatus.BAD_REQUEST, response);
+        }
+
+        File file = null;
+        try {
+            file = new File(System.currentTimeMillis() + "_" + mFile.getOriginalFilename());
+
+            file.createNewFile();
+            // Use try-with-resources to ensure FileOutputStream is closed
+            try (FileOutputStream fos = new FileOutputStream(file)) {
+                fos.write(mFile.getBytes());
+            }
+
+            String uploadFolderPath =
+                cbServerProperties.getDiscussionCloudFolderName() + "/" + communityId;
+            return uploadFile(file, uploadFolderPath,
+                cbServerProperties.getDiscussionContainerName());
+        } catch (Exception e) {
+            log.error("Failed to upload file. Exception: ", e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErrMsg("Failed to upload file. Exception: " + e.getMessage());
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            return response;
+        } finally {
+            if (file != null && file.exists()) {
+                file.delete();
+            }
+        }
+    }
+
+    public ApiResponse uploadFile(File file, String cloudFolderName, String containerName) {
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.UPLOAD_FILE);
+        try {
+            String objectKey = cloudFolderName + "/" + file.getName();
+            String url = storageService.upload(containerName, file.getAbsolutePath(),
+                objectKey, Option.apply(false), Option.apply(1), Option.apply(5), Option.empty());
+            Map<String, String> uploadedFile = new HashMap<>();
+            uploadedFile.put(Constants.NAME, file.getName());
+            uploadedFile.put(Constants.URL, url);
+            response.getResult().putAll(uploadedFile);
+            return response;
+        } catch (Exception e) {
+            log.error("Failed to upload file. Exception: ", e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErrMsg("Failed to upload file. Exception: " + e.getMessage());
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            return response;
         }
     }
 

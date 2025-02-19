@@ -152,6 +152,9 @@
     },
     "countOfAnswerPost": {
       "type": "integer"
+    },
+    "createdByUserId": {
+      "type": "string"
     }
   },
   "required": [
@@ -161,6 +164,7 @@
     "orgId",
     "tags",
     "topicName",
+    "topicId",
     "createdUserId"
   ],
   "additionalProperties": false

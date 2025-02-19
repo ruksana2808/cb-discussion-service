@@ -25,4 +25,23 @@ public class CbServerProperties {
 
     @Value("${report.community.user.limit}")
     private int reporCommunityUserLimit;
+
+    @Value("${discussion.cloud.folder.name}")
+    private String discussionCloudFolderName;
+
+    @Value("${discussion.container.name}")
+    private String discussionContainerName;
+
+    @Value("${cloud.storage.type.name}")
+    private String cloudStorageTypeName;
+
+    @Value("${cloud.storage.key}")
+    private String cloudStorageKey;
+
+    @Value("${cloud.storage.secret}")
+    private String cloudStorageSecret;
+
+    @Value("${cloud.storage.endpoint}")
+    private String cloudStorageEndpoint;
+
 }

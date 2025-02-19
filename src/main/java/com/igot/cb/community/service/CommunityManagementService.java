@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.igot.cb.pores.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.pores.util.ApiResponse;
 import java.util.Map;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * @author mahesh.vakkund
@@ -45,4 +46,6 @@ public interface CommunityManagementService {
     ApiResponse getPopularCommunitiesByField(Map<String, Object> payload);
 
     ApiResponse report(String token, Map<String, Object> reportData);
+
+    ApiResponse uploadFile(MultipartFile multipartFile, String communityId);
 }

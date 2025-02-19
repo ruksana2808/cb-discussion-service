@@ -11,10 +11,10 @@ import com.igot.cb.pores.exceptions.CustomException;
 import com.igot.cb.pores.util.CbServerProperties;
 import com.igot.cb.pores.util.Constants;
 import com.networknt.schema.JsonSchemaFactory;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.action.DocWriteResponse;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
@@ -27,12 +27,16 @@ import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.search.SearchScrollRequest;
 import org.elasticsearch.action.support.WriteRequest;
+import org.elasticsearch.action.update.UpdateRequest;
+import org.elasticsearch.action.update.UpdateResponse;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.client.indices.GetIndexRequest;
-import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.index.query.*;
 import org.elasticsearch.rest.RestStatus;
+import org.elasticsearch.script.Script;
+import org.elasticsearch.script.ScriptType;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.aggregations.Aggregation;
@@ -42,14 +46,16 @@ import org.elasticsearch.search.aggregations.ParsedMultiBucketAggregation;
 import org.elasticsearch.search.aggregations.bucket.MultiBucketsAggregation;
 import org.elasticsearch.search.aggregations.bucket.terms.Terms;
 import org.elasticsearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
-import org.elasticsearch.search.aggregations.metrics.ParsedTopHits;
-import org.elasticsearch.search.aggregations.metrics.TopHits;
-import org.elasticsearch.search.aggregations.metrics.TopHitsAggregationBuilder;
+import org.elasticsearch.search.aggregations.metrics.tophits.ParsedTopHits;
+import org.elasticsearch.search.aggregations.metrics.tophits.TopHits;
+import org.elasticsearch.search.aggregations.metrics.tophits.TopHitsAggregationBuilder;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.sort.SortBuilders;
 import org.elasticsearch.search.sort.SortOrder;
-import org.elasticsearch.xcontent.XContentType;
+import org.elasticsearch.common.xcontent.XContentType;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -66,7 +72,9 @@ public class EsUtilServiceImpl implements EsUtilService {
     private RestHighLevelClient elasticsearchClient;*/
     private final EsConfig esConfig;
     private final RestHighLevelClient elasticsearchClient;
+    private  final RestHighLevelClient sbESClient;
     private final Logger logger = LogManager.getLogger(getClass());
+
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -75,10 +83,15 @@ public class EsUtilServiceImpl implements EsUtilService {
     private CbServerProperties cbServerProperties;
 
     @Autowired
-    public EsUtilServiceImpl(RestHighLevelClient elasticsearchClient, EsConfig esConnection) {
+    public EsUtilServiceImpl(@Qualifier("elasticsearchClient") RestHighLevelClient elasticsearchClient, EsConfig esConnection,
+        @Qualifier("sbESClient") RestHighLevelClient sbESClient) {
         this.elasticsearchClient = elasticsearchClient;
         this.esConfig = esConnection;
+      this.sbESClient = sbESClient;
     }
+
+    @Value("${sunbird_user_index}")
+    private String sbUserIndex;
 
 
     @Override
@@ -127,11 +140,9 @@ public class EsUtilServiceImpl implements EsUtilService {
                     iterator.remove();
                 }
             }
-            IndexRequest indexRequest =
-                    new IndexRequest(index)
-                            .id(entityId)
-                            .source(updatedDocument)
-                            .setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
+            IndexRequest indexRequest = new IndexRequest(index, indexType, entityId)
+                .source(updatedDocument)
+                .setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
             IndexResponse response = elasticsearchClient.index(indexRequest, RequestOptions.DEFAULT);
             return response.status();
         } catch (IOException e) {
@@ -185,7 +196,7 @@ public class EsUtilServiceImpl implements EsUtilService {
                     extractFacetData(paginatedSearchResponse, searchCriteria);
             searchResult.setData(objectMapper.valueToTree(paginatedResult));
             searchResult.setFacets(fieldAggregations);
-            searchResult.setTotalCount(paginatedSearchResponse.getHits().getTotalHits().value);
+            searchResult.setTotalCount(paginatedSearchResponse.getHits().getTotalHits());
             return searchResult;
         } catch (IOException e) {
             logger.error("Error while fetching details from elastic search");
@@ -451,7 +462,7 @@ public class EsUtilServiceImpl implements EsUtilService {
     public void deleteDocumentsByCriteria(String esIndexName, SearchSourceBuilder sourceBuilder) {
         try {
             SearchHits searchHits = executeSearch(esIndexName, sourceBuilder);
-            if (searchHits.getTotalHits().value > 0) {
+            if (searchHits.getTotalHits() > 0) {
                 BulkResponse bulkResponse = deleteMatchingDocuments(esIndexName, searchHits);
                 if (!bulkResponse.hasFailures()) {
                     logger.info("Documents matching the criteria deleted successfully from Elasticsearch.");
@@ -735,10 +746,80 @@ public class EsUtilServiceImpl implements EsUtilService {
         SearchResult searchResult= new SearchResult();
         searchResult.setData(objectMapper.valueToTree(paginatedResult));
         searchResult.setFacets(fieldAggregations);
-        searchResult.setTotalCount(response.getHits().getTotalHits().value);
+        searchResult.setTotalCount(response.getHits().getTotalHits());
         return searchResult;
     }
 
+    @Override
+    public Boolean updateUserIndex(String userId, String communityId, Boolean append) {
+        logger.info("EsUtilService::updateUserIndex:inside method");
+            try {
+                // Prepare parameters for the script
+                // Prepare parameters for the script
+                Map<String, Object> params = new HashMap<>();
+                params.put("uuid", communityId);
+
+                // Choose the script source based on the operation type.
+                String scriptSource;
+                if (append) {
+                    scriptSource = "if (ctx._source.containsKey('discussionCommunities') == false || ctx._source.discussionCommunities == null) {" +
+                        "  ctx._source.discussionCommunities = [];" +
+                        "} " +
+                        "if (!ctx._source.discussionCommunities.contains(params.uuid)) {" +
+                        "  ctx._source.discussionCommunities.add(params.uuid);" +
+                        "}";
+                } else {
+                    scriptSource = "if (ctx._source.containsKey('discussionCommunities') && ctx._source.discussionCommunities != null) {" +
+                        "  ctx._source.discussionCommunities.removeIf(community -> community == params.uuid);" +
+                        "}";
+                }
+                Script script = new Script(ScriptType.INLINE, "painless", scriptSource, params);
+                Map<String, Object> upsertContent = new HashMap<>();
+                upsertContent.put(Constants.DISCUSSION_COMMUNITY_KEY, Collections.singletonList(communityId));
+
+//                 Create the UpdateRequest without a type
+                UpdateRequest updateRequest = new UpdateRequest(sbUserIndex, Constants._DOC, userId)
+                    .script(script)
+                    .upsert(new IndexRequest(sbUserIndex).id(userId).source(upsertContent)).retryOnConflict(5);
+//                UpdateRequest updateRequest = new UpdateRequest("user_alias", "3c6b064b-fa20-4b59-8502-b68dd3bdb0bd")
+//                    .doc(upsertContent);
+
+
+                // Log the request for debugging
+                logger.info("UpdateRequest: {}", updateRequest);
+
+                UpdateResponse updateResponse = sbESClient.update(updateRequest, RequestOptions.DEFAULT);
+
+                DocWriteResponse.Result result = updateResponse.getResult();
+
+                if (result == DocWriteResponse.Result.CREATED) {
+                    logger.info("WfRequests created successfully for userId: {}", userId);
+                } else if (result == DocWriteResponse.Result.UPDATED) {
+                    logger.info("WfRequests updated successfully for userId: {}", userId);
+                } else if (result == DocWriteResponse.Result.NOOP) {
+                    logger.info("WfRequests update was a noop; no changes were made for userId: {}", userId);
+                } else {
+                    logger.warn("WfRequests update:: Unexpected result: {}, for userId: {}", result, userId);
+                }
+
+                return true; // Success
+
+            } catch (ElasticsearchStatusException e) {
+                if (e.status() == RestStatus.CONFLICT) {
+                    logger.warn("Conflict detected, retrying attempt {} of {}", e);
+                } else {
+                    logger.error("Failed to upsert communityId for userId: {}", userId, e);
+                    return false;
+                }
+            } catch (Exception e) {
+                logger.error("Failed to upsert communityId for userId: {}", userId, e);
+                return false;
+            }
+
+
+        logger.error("Failed to upsert communityId for userId: {} after {} retries", userId);
+        return false;
+    }
     @Override
     public SearchResult searchDocumentsByField(String indexName, String field, int size,
         String order) {
@@ -769,7 +850,7 @@ public class EsUtilServiceImpl implements EsUtilService {
             SearchResult searchResult= new SearchResult();
             searchResult.setData(objectMapper.valueToTree(paginatedResult));
             searchResult.setFacets(fieldAggregations);
-            searchResult.setTotalCount(response.getHits().getTotalHits().value);
+            searchResult.setTotalCount(response.getHits().getTotalHits());
             return searchResult;
         } catch (Exception e) {
             logger.error("Error while fetching details from elastic search");
