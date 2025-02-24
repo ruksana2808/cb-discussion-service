@@ -38,4 +38,6 @@ public interface EsUtilService {
   SearchResponse popularCommunities(SearchRequest searchRequest, RequestOptions aDefault);
 
   Boolean updateUserIndex (String userId, String communityId, Boolean append);
+
+  public Boolean doesCommunityExist(String orgId, String communityName, long topicId);
 }

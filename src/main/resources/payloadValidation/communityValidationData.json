@@ -155,6 +155,9 @@
     },
     "createdByUserId": {
       "type": "string"
+    },
+    "orgName": {
+      "type": "string"
     }
   },
   "required": [
@@ -165,7 +168,8 @@
     "tags",
     "topicName",
     "topicId",
-    "createdUserId"
+    "createdUserId",
+    "orgName"
   ],
   "additionalProperties": false
 }

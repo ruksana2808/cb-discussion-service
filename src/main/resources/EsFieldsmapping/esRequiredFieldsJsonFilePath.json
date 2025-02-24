@@ -92,5 +92,8 @@
   },
   "reportedBy": {
     "type": "keyword"
+  },
+  "orgName": {
+    "type": "keyword"
   }
 }
