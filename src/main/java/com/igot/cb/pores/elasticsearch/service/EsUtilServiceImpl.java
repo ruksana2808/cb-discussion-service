@@ -822,13 +822,14 @@ public class EsUtilServiceImpl implements EsUtilService {
     }
 
     @Override
-    public Boolean doesCommunityExist(String orgId, String communityName) {
+    public Boolean doesCommunityExist(String orgId, String communityName, long topicId) {
         logger.info("EsUtilService::updateUserIndex:inside method");
         try {
             // Build the exact match query
             BoolQueryBuilder query = QueryBuilders.boolQuery()
                 .must(QueryBuilders.termQuery(Constants.ORG_ID+Constants.KEYWORD, orgId))
-                .must(QueryBuilders.termQuery(Constants.COMMUNITY_NAME+Constants.KEYWORD, communityName));
+                .must(QueryBuilders.termQuery(Constants.COMMUNITY_NAME+Constants.KEYWORD, communityName))
+                .must(QueryBuilders.termQuery(Constants.TOPIC_ID, topicId));
 
             // Create the search request
             SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();

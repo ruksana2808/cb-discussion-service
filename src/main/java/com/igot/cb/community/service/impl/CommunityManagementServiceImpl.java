@@ -141,9 +141,9 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
         try {
             // Check if the community already exists
             if (esUtilService.doesCommunityExist(communityDetails.get(Constants.ORG_ID).asText(),
-                communityDetails.get(Constants.COMMUNITY_NAME).asText())) {
+                communityDetails.get(Constants.COMMUNITY_NAME).asText(), communityDetails.get(Constants.TOPIC_ID).asLong())) {
                 response.getParams().setStatus(Constants.FAILED);
-                response.getParams().setErrMsg("Community with the given orgId and communityName already exists. or its in blocked state.");
+                response.getParams().setErrMsg("Community with the given orgId and communityName already exists in this topic. or its in blocked state.");
                 response.setResponseCode(HttpStatus.CONFLICT);
                 return response;
             }

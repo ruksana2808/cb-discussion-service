@@ -39,5 +39,5 @@ public interface EsUtilService {
 
   Boolean updateUserIndex (String userId, String communityId, Boolean append);
 
-  public Boolean doesCommunityExist(String orgId, String communityName);
+  public Boolean doesCommunityExist(String orgId, String communityName, long topicId);
 }
