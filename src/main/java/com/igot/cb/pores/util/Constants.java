@@ -184,6 +184,8 @@ public class Constants {
     public static final String UPLOAD_FILE = "api.file.upload";
     public static final String NAME = "name";
     public static final String URL = "url";
+    public static final String ORG_REDIX_KEY = "org:";
+    public static final String ORG_ID = "orgId";
 
     private Constants() {
     }
