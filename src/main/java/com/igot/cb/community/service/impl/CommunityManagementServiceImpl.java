@@ -121,6 +121,13 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
     public ApiResponse create(JsonNode communityDetails, String authToken) {
         log.info("CommunityEngagementService::create:creating community");
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_CREATE);
+        String userId = accessTokenValidator.verifyUserToken(authToken);
+        if (StringUtils.isBlank(userId)) {
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErrMsg(Constants.USER_ID_DOESNT_EXIST);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return response;
+        }
         try {
             validatePayload(Constants.PAYLOAD_VALIDATION_FILE, communityDetails);
         } catch (CustomException e) {
@@ -132,11 +139,12 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
         }
 
         try {
-            String userId = accessTokenValidator.verifyUserToken(authToken);
-            if (StringUtils.isBlank(userId)) {
+            // Check if the community already exists
+            if (esUtilService.doesCommunityExist(communityDetails.get(Constants.ORG_ID).asText(),
+                communityDetails.get(Constants.COMMUNITY_NAME).asText(), communityDetails.get(Constants.TOPIC_ID).asLong())) {
                 response.getParams().setStatus(Constants.FAILED);
-                response.getParams().setErrMsg(Constants.USER_ID_DOESNT_EXIST);
-                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                response.getParams().setErrMsg("Community with the given orgId and communityName already exists in this topic. or its in blocked state.");
+                response.setResponseCode(HttpStatus.CONFLICT);
                 return response;
             }
             String communityId = UUID.randomUUID().toString();
@@ -170,6 +178,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 log.info(
                         "created community");
                 cacheService.deleteCache(Constants.CATEGORY_LIST_ALL_REDIS_KEY_PREFIX);
+                cacheService.deleteCache(generateRedisJwtTokenKey(createDefaultSearchPayload()));
                 response.getResult().put(Constants.STATUS, Constants.SUCCESSFULLY_CREATED);
                 response.getResult().put(Constants.COMMUNITY_ID, communityId);
                 return response;
@@ -184,6 +193,15 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
             log.error("error occured while creating commmunity:" + e);
             throw new CustomException("error while processing", e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    private SearchCriteria createDefaultSearchPayload() {
+        SearchCriteria defaultCriteria = new SearchCriteria();
+        HashMap<String,Object> filterCriteria = new HashMap<>();
+        filterCriteria.put(Constants.STATUS, Constants.ACTIVE);
+        defaultCriteria.setFilterCriteriaMap(filterCriteria);
+        defaultCriteria.setFacets(Collections.singletonList((Constants.TOPIC_NAME)));
+        return defaultCriteria;
     }
 
     private JsonNode addExtraproperties(JsonNode saveJsonEntity, String id, Timestamp currentTime) {
@@ -293,6 +311,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 esUtilService.updateDocument(Constants.INDEX_NAME, Constants.INDEX_TYPE, communityId, map, cbServerProperties.getElasticCommunityJsonPath());
                 cacheService.deleteCache(communityId);
                 cacheService.deleteCache(Constants.CATEGORY_LIST_ALL_REDIS_KEY_PREFIX);
+                cacheService.deleteCache(generateRedisJwtTokenKey(createDefaultSearchPayload()));
                 response.getResult().put(Constants.RESPONSE,
                         "Deleted the community with id: " + communityId);
             } else {
@@ -344,6 +363,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 response.getResult().put(Constants.RESPONSE,
                         "Updated the community with id: " + communityId);
                 cacheService.deleteCache(Constants.CATEGORY_LIST_ALL_REDIS_KEY_PREFIX);
+                cacheService.deleteCache(generateRedisJwtTokenKey(createDefaultSearchPayload()));
                 return response;
 
             } else {
@@ -405,6 +425,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 dataMap.put(Constants.USER_ID, userId);
                 producer.push(userCountUpdateTopic, dataMap);
                 esUtilService.updateUserIndex(userId,communityId,true);
+                cacheService.deleteCache(generateRedisJwtTokenKey(createDefaultSearchPayload()));
                 return response;
             } else {
                 // Check if STATUS is false in the existing record
@@ -426,6 +447,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                     dataMap.put(Constants.USER_ID, userId);
                     producer.push(userCountUpdateTopic, dataMap);
                     esUtilService.updateUserIndex(userId,communityId,true);
+                    cacheService.deleteCache(generateRedisJwtTokenKey(createDefaultSearchPayload()));
                     return response;
 
                 } else {
@@ -766,6 +788,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 objectRedisTemplate.delete(redisKey);
                 cacheService.deleteUserFromHash(Constants.CMMUNITY_USER_REDIS_PREFIX+communityId,Constants.USER_PREFIX+userId);
                 esUtilService.updateUserIndex(userId,communityId,false);
+                cacheService.deleteCache(generateRedisJwtTokenKey(createDefaultSearchPayload()));
                 return response;
             } else {
                 response.setResponseCode(HttpStatus.BAD_REQUEST);
@@ -1613,10 +1636,11 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 List<String> orgIdList = new ArrayList<>(uniqueOrgIds);
                 Map<String, Object> propertyMap = new HashMap<>();
                 propertyMap.put(Constants.ID, orgIdList);
-                List<Map<String, Object>> orgInfoList = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
-                    Constants.KEYSPACE_SUNBIRD, Constants.TABLE_ORGANISATION, propertyMap,
-                    Arrays.asList(Constants.LOGO, Constants.ORG_NAME, Constants.ID), null);
-                searchResult.setAdditionalInfo(orgInfoList);
+//                List<Map<String, Object>> orgInfoList = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
+//                    Constants.KEYSPACE_SUNBIRD, Constants.TABLE_ORGANISATION, propertyMap,
+//                    Arrays.asList(Constants.LOGO, Constants.ORG_NAME, Constants.ID), null);
+                enrichOrgInfo(searchCriteria, searchResult, uniqueOrgIds, orgIdList);
+
             }
 
             redisTemplate.opsForValue().set(
@@ -1634,6 +1658,39 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
                 HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
+    }
+
+    private void enrichOrgInfo(SearchCriteria searchCriteria, SearchResult searchResult, Set<String> uniqueOrgIds, List<String> orgIdList) {
+        List<Object> redisResults = fetchDataForKeys(
+            orgIdList.stream().map(id -> Constants.ORG_REDIX_KEY + id).collect(Collectors.toList())
+        );
+        List<Map<String, Object>> orgInfoList = redisResults.stream()
+            .filter(obj -> obj instanceof Map) // Ensure the object is a Map
+            .map(obj -> (Map<String, Object>) obj) // Cast to Map<String, Object>
+            .collect(Collectors.toList());
+        // Remove found IDs from orgIdSet
+        redisResults.forEach(obj -> {
+            if (obj instanceof Map) {
+                Object idValue = ((Map<?, ?>) obj).get(Constants.ID);
+                if (idValue != null) {
+                    uniqueOrgIds.remove(idValue.toString()); // Remove if found
+                }
+            }
+        });
+
+        // If any IDs are still missing, perform some operation
+        if (!uniqueOrgIds.isEmpty()) {
+            // Example: Fetch missing IDs from Cassandra
+            Map<String, Object> missingPropertyMap = new HashMap<>();
+            missingPropertyMap.put(Constants.ID, new ArrayList<>(uniqueOrgIds));
+
+            List<Map<String, Object>> missingOrgInfoList = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
+                Constants.KEYSPACE_SUNBIRD, Constants.TABLE_ORGANISATION, missingPropertyMap,
+                Arrays.asList(Constants.LOGO, Constants.ORG_NAME, Constants.ID), null
+            );
+            orgInfoList.addAll(missingOrgInfoList);
+        }
+        searchResult.setAdditionalInfo(orgInfoList);
     }
 
     private void createSuccessResponse(ApiResponse response) {

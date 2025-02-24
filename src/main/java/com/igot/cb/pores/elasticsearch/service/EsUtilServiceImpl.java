@@ -820,6 +820,36 @@ public class EsUtilServiceImpl implements EsUtilService {
         logger.error("Failed to upsert communityId for userId: {} after {} retries", userId);
         return false;
     }
+
+    @Override
+    public Boolean doesCommunityExist(String orgId, String communityName, long topicId) {
+        logger.info("EsUtilService::updateUserIndex:inside method");
+        try {
+            // Build the exact match query
+            BoolQueryBuilder query = QueryBuilders.boolQuery()
+                .must(QueryBuilders.termQuery(Constants.ORG_ID+Constants.KEYWORD, orgId))
+                .must(QueryBuilders.termQuery(Constants.COMMUNITY_NAME+Constants.KEYWORD, communityName))
+                .must(QueryBuilders.termQuery(Constants.TOPIC_ID, topicId));
+
+            // Create the search request
+            SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+            sourceBuilder.query(query);
+            sourceBuilder.size(0); // We are only interested in the existence
+
+            SearchRequest searchRequest = new SearchRequest(Constants.INDEX_NAME);
+            searchRequest.source(sourceBuilder);
+
+            // Execute the search
+            SearchResponse searchResponse = elasticsearchClient.search(searchRequest, RequestOptions.DEFAULT);
+
+            // Check if any documents match the query
+            return searchResponse.getHits().getTotalHits() > 0;
+        } catch (Exception e) {
+            log.error("Error checking community existence in Elasticsearch: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+
     @Override
     public SearchResult searchDocumentsByField(String indexName, String field, int size,
         String order) {
