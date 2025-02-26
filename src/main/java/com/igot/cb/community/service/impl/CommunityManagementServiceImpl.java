@@ -111,7 +111,7 @@ public class CommunityManagementServiceImpl implements CommunityManagementServic
 
     private BaseStorageService storageService = null;
 
-//    @PostConstruct
+    @PostConstruct
     public void init() {
         if (storageService == null) {
             storageService = StorageServiceFactory.getStorageService(new StorageConfig(cbServerProperties.getCloudStorageTypeName(), cbServerProperties.getCloudStorageKey(), cbServerProperties.getCloudStorageSecret().replace("\\n", "\n"), Option.apply(cbServerProperties.getCloudStorageEndpoint()), Option.empty()));
