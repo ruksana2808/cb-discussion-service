@@ -80,8 +80,8 @@ public class Consumer {
     if (communityEntityOptional.isPresent()){
       ObjectNode dataNode = (ObjectNode) communityEntityOptional.get().getData();
       long currentCount = 0L;
-      if (dataNode.has(Constants.COUNT_OF_PEOPLE_JOINED)) {
-        currentCount = dataNode.get(Constants.COUNT_OF_PEOPLE_JOINED).asLong();
+      if (dataNode.has(Constants.COUNT_OF_POST_CREATED)) {
+        currentCount = dataNode.get(Constants.COUNT_OF_POST_CREATED).asLong();
       }
       if (updateUserCount.get(Constants.STATUS).equals(Constants.INCREMENT)){
         dataNode.put(Constants.COUNT_OF_POST_CREATED,currentCount+1);
