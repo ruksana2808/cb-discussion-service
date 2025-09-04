@@ -247,13 +247,13 @@ public class ProfanityConsumer {
         );
         if (Constants.QUESTION.equalsIgnoreCase(type)) {
             log.info("Profanity detected in question post: {}", data.get(Constants.DISCUSSION_ID).asText());
-            notificationTriggerService.triggerNotification(Constants.PROFANITY_CHECK, ALERT, Collections.singletonList(userId), TITLE, firstName, notificationData);
+            notificationTriggerService.triggerNotification(Constants.PROFANITY_CHECK, ALERT, Collections.singletonList(userId), data.get(DESCRIPTION).asText(), firstName, notificationData);
             discussionService.deleteCacheByCommunity(Constants.DISCUSSION_CACHE_PREFIX + data.get(Constants.COMMUNITY_ID).asText());
             discussionService.deleteCacheByCommunity(Constants.DISCUSSION_POSTS_BY_USER + data.get(Constants.COMMUNITY_ID).asText() + Constants.UNDER_SCORE + userId);
             discussionService.updateCacheForFirstFivePages(data.get(Constants.COMMUNITY_ID).asText(), false);
         } else if (Constants.ANSWER_POST.equalsIgnoreCase(type) && org.apache.commons.lang3.StringUtils.isNotEmpty(parentDiscussionId)) {
             log.info("Profanity detected in answer post: {}", data.get(Constants.DISCUSSION_ID).asText());
-            notificationTriggerService.triggerNotification(Constants.PROFANITY_CHECK, ALERT, Collections.singletonList(userId), TITLE, firstName, notificationData);
+            notificationTriggerService.triggerNotification(Constants.PROFANITY_CHECK, ALERT, Collections.singletonList(userId), data.get(DESCRIPTION).asText(), firstName, notificationData);
             discussionService.deleteCacheByCommunity(Constants.DISCUSSION_CACHE_PREFIX + data.get(Constants.COMMUNITY_ID).asText());
             discussionService.updateCacheForFirstFivePages(data.get(Constants.COMMUNITY_ID).asText(), false);
             redisTemplate.opsForValue()

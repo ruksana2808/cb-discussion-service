@@ -302,6 +302,7 @@ class ProfanityConsumerTest {
         ObjectNode data = JsonNodeFactory.instance.objectNode();
         data.put(Constants.COMMUNITY_ID, "community1");
         data.put(Constants.DISCUSSION_ID, "disc123");
+        data.put(Constants.DESCRIPTION, "Test question description");
         DiscussionEntity discussionEntity = mock(DiscussionEntity.class);
         ObjectNode entityData = JsonNodeFactory.instance.objectNode();
         entityData.put("createdBy", userId);
@@ -314,7 +315,7 @@ class ProfanityConsumerTest {
                 eq(Constants.PROFANITY_CHECK),
                 eq(Constants.ALERT),
                 eq(Collections.singletonList(userId)),
-                eq(Constants.TITLE),
+                eq("Test question description"),
                 eq("TestUser"),
                 argThat(map -> Boolean.TRUE.equals(map.get("isProfane")) &&
                         "community1".equals(map.get(Constants.COMMUNITY_ID)) &&
@@ -333,10 +334,14 @@ class ProfanityConsumerTest {
         ObjectNode data = JsonNodeFactory.instance.objectNode();
         data.put(Constants.COMMUNITY_ID, "community1");
         data.put(Constants.DISCUSSION_ID, "disc123");
+        data.put(Constants.DESCRIPTION, "Test description");
         DiscussionEntity discussionEntity = mock(DiscussionEntity.class);
         ObjectNode entityData = JsonNodeFactory.instance.objectNode();
         entityData.put("createdBy", userId);
         when(discussionEntity.getData()).thenReturn(entityData);
+        when(helperMethodService.fetchUserFirstName(userId)).thenReturn("TestUser");
+        DiscussionEntity parentDiscussionEntity = mock(DiscussionEntity.class);
+        when(discussionRepository.findById(parentDiscussionId)).thenReturn(Optional.of(parentDiscussionEntity));
         SearchCriteria mockCriteria = mock(SearchCriteria.class);
         when(discussionService.createSearchCriteriaWithDefaults(eq(parentDiscussionId), eq("community1"), eq(Constants.ANSWER_POST)))
                 .thenReturn(mockCriteria);
@@ -348,9 +353,18 @@ class ProfanityConsumerTest {
         invokePrivate("handleProfanityForDiscussionAnswerPostCreation",
                 new Class[]{String.class, String.class, DiscussionEntity.class, ObjectNode.class},
                 type, parentDiscussionId, discussionEntity, data);
+        verify(notificationTriggerService).triggerNotification(
+                eq(Constants.PROFANITY_CHECK),
+                eq(Constants.ALERT),
+                eq(Collections.singletonList(userId)),
+                eq("Test description"),
+                eq("TestUser"),
+                anyMap()
+        );
         verify(discussionService).deleteCacheByCommunity(Constants.DISCUSSION_CACHE_PREFIX + "community1");
         verify(discussionService).updateCacheForFirstFivePages("community1", false);
         verify(redisTemplate.opsForValue()).getAndDelete(anyString());
+        verify(discussionService).updateAnswerPostToDiscussion(eq(parentDiscussionEntity), eq("disc123"), eq(Constants.DECREMENT));
     }
 
 
@@ -401,6 +415,7 @@ class ProfanityConsumerTest {
         data.put("createdBy", "user123");
         data.put(Constants.COMMUNITY_ID, "community1");
         data.put(Constants.DISCUSSION_ID, discussionId);
+        data.put(Constants.DESCRIPTION, "Test question description");
         DiscussionEntity entity = mock(DiscussionEntity.class);
         when(discussionRepository.findById(discussionId)).thenReturn(Optional.of(entity));
         when(entity.getIsActive()).thenReturn(true);
@@ -421,7 +436,7 @@ class ProfanityConsumerTest {
                 eq(Constants.PROFANITY_CHECK),
                 eq(Constants.ALERT),
                 eq(Collections.singletonList("user123")),
-                eq(Constants.TITLE),
+                eq("Test question description"),
                 eq("John"),
                 anyMap()
         );

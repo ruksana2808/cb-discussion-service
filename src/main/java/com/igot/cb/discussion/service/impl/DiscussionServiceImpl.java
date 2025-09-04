@@ -619,10 +619,14 @@ public class DiscussionServiceImpl implements DiscussionService {
             if (isAnswerReply) {
                 DiscussionAnswerPostReplyEntity replyEntity = (DiscussionAnswerPostReplyEntity) entityObject;
                 dataNode = replyEntity.getData();
+                ((ObjectNode) dataNode).put(IS_PROFANE, replyEntity.getIsProfane());
+                log.info("Profanity status for the reply: {} for discussionId : {} ", replyEntity.getIsProfane(), replyEntity.getDiscussionId());
                 isActive = replyEntity.getIsActive();
             } else {
                 DiscussionEntity discussionEntity = (DiscussionEntity) entityObject;
                 dataNode = discussionEntity.getData();
+                ((ObjectNode) dataNode).put(IS_PROFANE, discussionEntity.getIsProfane());
+                log.info("Profanity status for the post: {} for discussionId : {}", discussionEntity.getIsProfane(), discussionEntity.getDiscussionId());
                 isActive = discussionEntity.getIsActive();
             }
 
@@ -1095,10 +1099,14 @@ public class DiscussionServiceImpl implements DiscussionService {
             if (Constants.ANSWER_POST_REPLY.equals(type)) {
                 DiscussionAnswerPostReplyEntity replyEntity = (DiscussionAnswerPostReplyEntity) entityObject;
                 dataNode = replyEntity.getData();
+                ((ObjectNode) dataNode).put(IS_PROFANE, replyEntity.getIsProfane());
+                log.info("Profanity status for the reply: {} for discussionId : {} ", replyEntity.getIsProfane(), replyEntity.getDiscussionId());
                 isActive = replyEntity.getIsActive();
             } else {
                 DiscussionEntity discussionEntity = (DiscussionEntity) entityObject;
                 dataNode = discussionEntity.getData();
+                ((ObjectNode) dataNode).put(IS_PROFANE, discussionEntity.getIsProfane());
+                log.info("Profanity status for the post: {} for discussionId : {}", discussionEntity.getIsProfane(), discussionEntity.getDiscussionId());
                 isActive = discussionEntity.getIsActive();
             }
 
