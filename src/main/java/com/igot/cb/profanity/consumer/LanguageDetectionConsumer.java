@@ -49,19 +49,9 @@ public class LanguageDetectionConsumer {
                 ObjectNode discussionDetailsNode = (ObjectNode) mapper.readTree(textData.value());
                 String id = discussionDetailsNode.get(Constants.DISCUSSION_ID).asText();
                 String text = discussionDetailsNode.get(Constants.DESCRIPTION).asText();
-                Map<String, Object> langDetectResponse = callLanguageDetectionService(discussionDetailsNode,id,text);
                 String detectedLanguage = "";
-                if (MapUtils.isNotEmpty(langDetectResponse)) {
-                    Object lang = langDetectResponse.get(Constants.DETECTED_LANGUAGE);
-                    if (lang != null) {
-                        detectedLanguage = lang.toString();
-                    }
-                }
-                if (!StringUtils.hasText(detectedLanguage)) {
-                    log.warn("Detected language is empty for discussion ID: {}", id);
-                    handleLanguageDetectionFailure(discussionDetailsNode, id, Constants.LANGUAGE_NOT_DETECTED);
-                    return;
-                }
+                detectedLanguage = detectLanguage(detectedLanguage, discussionDetailsNode, id, text);
+                if (detectedLanguage == null) return;
                 discussionDetailsNode.put(Constants.LANGUAGE, detectedLanguage);
                 profanityCheckService.processProfanityCheck(String.valueOf(id), discussionDetailsNode);
             } catch (JsonProcessingException e) {
@@ -111,5 +101,37 @@ public class LanguageDetectionConsumer {
             return new HashMap<>();
         }
         return langDetectResponse;
+    }
+
+
+    /**
+     * Detects the language of the given text using a language detection service.
+     * If the service call fails or returns an empty language, handles the failure accordingly.
+     *
+     * @param detectedLanguage the initially detected language (can be empty)
+     * @param discussionDetailsNode the details of the discussion as an ObjectNode
+     * @param id the ID of the discussion
+     * @param text the text for which language detection is to be performed
+     * @return the detected language, or null if detection failed
+     */
+    private String detectLanguage(String detectedLanguage, ObjectNode discussionDetailsNode, String id, String text) {
+        if (cbServerProperties.isEnableEnglishLanguageByDefault()) {
+            log.info("Setting default language as English for discussion ID: {}", id);
+            detectedLanguage = Constants.ENGLISH_LANGUAGE_CODE;
+        } else {
+            Map<String, Object> langDetectResponse = callLanguageDetectionService(discussionDetailsNode, id, text);
+            if (MapUtils.isNotEmpty(langDetectResponse)) {
+                Object lang = langDetectResponse.get(Constants.DETECTED_LANGUAGE);
+                if (lang != null) {
+                    detectedLanguage = lang.toString();
+                }
+            }
+            if (!StringUtils.hasText(detectedLanguage)) {
+                log.warn("Detected language is empty for discussion ID: {}", id);
+                handleLanguageDetectionFailure(discussionDetailsNode, id, Constants.LANGUAGE_NOT_DETECTED);
+                return null;
+            }
+        }
+        return detectedLanguage;
     }
 }
