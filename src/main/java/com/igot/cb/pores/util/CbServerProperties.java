@@ -115,4 +115,7 @@ public class CbServerProperties {
   @Value("${content.moderation.service.url}")
   private String contentModerationServiceUrl;
 
+  @Value("${enable.english.language.by.default}")
+  private boolean enableEnglishLanguageByDefault;
+
 }
