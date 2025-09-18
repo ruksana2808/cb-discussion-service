@@ -93,7 +93,6 @@ public class Constants {
     public static final String NO_DATA_FOUND = "No data found";
     public static final String USER_ID_RQST = "userId";
     public static final String REQUEST_PAYLOAD = "requestPayload";
-    public static final String JWT_SECRET_KEY = "demand_search_result";
     public static final String FAILED_CONST = "FAILED";
     public static final String X_AUTH_TOKEN = "x-authenticated-user-token";
     public static final String UPDATED_ON = "updatedOn";

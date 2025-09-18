@@ -44,6 +44,7 @@ class DiscussionServiceImpl2Test {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        when(cbServerProperties.getJwtDemandSearchKeyName()).thenReturn("dummy-secret");
     }
 
     private String invokeGenerateRedisTokenKey(SearchCriteria sc) throws Exception {

@@ -21,10 +21,7 @@ import com.igot.cb.pores.cache.CacheService;
 import com.igot.cb.pores.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.pores.elasticsearch.dto.SearchResult;
 import com.igot.cb.pores.elasticsearch.service.EsUtilService;
-import com.igot.cb.pores.util.ApiResponse;
-import com.igot.cb.pores.util.CbServerProperties;
-import com.igot.cb.pores.util.Constants;
-import com.igot.cb.pores.util.PayloadValidation;
+import com.igot.cb.pores.util.*;
 import com.igot.cb.producer.Producer;
 import com.igot.cb.profanity.IProfanityCheckService;
 import com.igot.cb.transactional.cassandrautils.CassandraOperation;
@@ -127,6 +124,8 @@ class DiscussionServiceImplTest {
     private static final String DESIGNATION = "Engineer";
     private static final String DEPARTMENT = "IT";
 
+    @Mock private DiscussionServiceUtil discussionServiceUtil;
+
     @BeforeEach
     void setUp() {
         // Setup discussion entity
@@ -177,6 +176,8 @@ class DiscussionServiceImplTest {
         when(cbServerProperties.getKafkaUserPostCount()).thenReturn("user-post-count");
         when(cbServerProperties.getDiscussionCloudFolderName()).thenReturn("discussions");
         when(cbServerProperties.getDiscussionContainerName()).thenReturn("container");
+        when(cbServerProperties.getJwtDemandSearchKeyName()).thenReturn("dummy-secret");
+        doReturn("dummy-key").when(discussionServiceUtil).generateRedisJwtTokenKey(any());
     }
 
     @Test

@@ -77,6 +77,9 @@ public class AnswerPostReplyServiceImpl implements AnswerPostReplyService {
     @Autowired
     private Producer producer;
 
+    @Autowired
+    private DiscussionServiceUtil discussionServiceUtil;
+
     @Override
     public ApiResponse createAnswerPostReply(JsonNode answerPostDataReplyData, String token) {
         log.info("DiscussionService::createAnswerPostReply:creating answerPostReply");
@@ -161,11 +164,11 @@ public class AnswerPostReplyServiceImpl implements AnswerPostReplyService {
             cacheService.putCache(Constants.DISCUSSION_CACHE_PREFIX + id, jsonNode);
             updateAnswerPostReplyToAnswerPost(discussionEntity, String.valueOf(id), Constants.INCREMENT);
             redisTemplate.opsForValue()
-                    .getAndDelete(DiscussionServiceUtil.generateRedisJwtTokenKey(createDefaultSearchCriteria(
+                    .getAndDelete(discussionServiceUtil.generateRedisJwtTokenKey(createDefaultSearchCriteria(
                             answerPostReplyDataNode.get(Constants.PARENT_ANSWER_POST_ID).asText(),
                             answerPostReplyDataNode.get(Constants.COMMUNITY_ID).asText())));
             redisTemplate.opsForValue()
-                    .getAndDelete(DiscussionServiceUtil.generateRedisJwtTokenKey(createSearchCriteriaWithDefaults(
+                    .getAndDelete(discussionServiceUtil.generateRedisJwtTokenKey(createSearchCriteriaWithDefaults(
                             answerPostReplyDataNode.get(Constants.PARENT_DISCUSSION_ID).asText(),
                             answerPostReplyDataNode.get(Constants.COMMUNITY_ID).asText(),
                             Constants.ANSWER_POST)));
@@ -355,9 +358,9 @@ public class AnswerPostReplyServiceImpl implements AnswerPostReplyService {
             response.setResponseCode(HttpStatus.OK);
             response.setMessage(Constants.DELETED_SUCCESSFULLY);
             response.getParams().setStatus(Constants.SUCCESS);
-            redisTemplate.opsForValue().getAndDelete(DiscussionServiceUtil.generateRedisJwtTokenKey(createDefaultSearchCriteria(data.get(Constants.PARENT_ANSWER_POST_ID).asText(), data.get(Constants.COMMUNITY_ID).asText())));
+            redisTemplate.opsForValue().getAndDelete(discussionServiceUtil.generateRedisJwtTokenKey(createDefaultSearchCriteria(data.get(Constants.PARENT_ANSWER_POST_ID).asText(), data.get(Constants.COMMUNITY_ID).asText())));
             redisTemplate.opsForValue()
-                    .getAndDelete(DiscussionServiceUtil.generateRedisJwtTokenKey(createSearchCriteriaWithDefaults(
+                    .getAndDelete(discussionServiceUtil.generateRedisJwtTokenKey(createSearchCriteriaWithDefaults(
                             data.get(Constants.PARENT_DISCUSSION_ID).asText(),
                             data.get(Constants.COMMUNITY_ID).asText(),
                             Constants.ANSWER_POST)));
@@ -438,7 +441,7 @@ public class AnswerPostReplyServiceImpl implements AnswerPostReplyService {
             esUtilService.updateDocument(cbServerProperties.getDiscussionEntity(), discussionAnswerPostReplyEntity.getDiscussionId(), discussionAnswerPostReplyDetailsMap, cbServerProperties.getElasticDiscussionJsonPath());
             cacheService.putCache(Constants.DISCUSSION_CACHE_PREFIX + discussionAnswerPostReplyEntity.getDiscussionId(), jsonNode);
             redisTemplate.opsForValue()
-                    .getAndDelete(DiscussionServiceUtil.generateRedisJwtTokenKey(createDefaultSearchCriteria(
+                    .getAndDelete(discussionServiceUtil.generateRedisJwtTokenKey(createDefaultSearchCriteria(
                             data.get(Constants.PARENT_ANSWER_POST_ID).asText(),
                             data.get(Constants.COMMUNITY_ID).asText())));
             log.info("AnswerPostReply updated successfully");

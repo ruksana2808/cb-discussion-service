@@ -16,10 +16,7 @@ import com.igot.cb.notificationUtill.NotificationTriggerService;
 import com.igot.cb.pores.cache.CacheService;
 import com.igot.cb.pores.elasticsearch.dto.SearchResult;
 import com.igot.cb.pores.elasticsearch.service.EsUtilService;
-import com.igot.cb.pores.util.ApiResponse;
-import com.igot.cb.pores.util.CbServerProperties;
-import com.igot.cb.pores.util.Constants;
-import com.igot.cb.pores.util.PayloadValidation;
+import com.igot.cb.pores.util.*;
 import com.igot.cb.producer.Producer;
 import com.igot.cb.transactional.cassandrautils.CassandraOperation;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +26,8 @@ import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.http.HttpStatus;
@@ -45,6 +44,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class AnswerPostReplyServiceImplTest {
 
     @InjectMocks
@@ -64,6 +64,7 @@ class AnswerPostReplyServiceImplTest {
     @Mock private HelperMethodService helperMethodService;
     @Mock private NotificationTriggerService notificationTriggerService;
     @Mock private Producer producer;
+    @Mock private DiscussionServiceUtil discussionServiceUtil;
 
     @Mock
     private ObjectNode mockObjectNode;
@@ -76,7 +77,9 @@ class AnswerPostReplyServiceImplTest {
     private final String discussionId = "disc123";
 
     @BeforeEach
-    void setUp() throws NoSuchFieldException, IllegalAccessException {
+    void setUp() throws Exception {
+        CbServerProperties mockProps = mock(CbServerProperties.class);
+        when(mockProps.getJwtDemandSearchKeyName()).thenReturn("dummy-secret");
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(cbServerProperties.getDiscussionEntity()).thenReturn("discussionIndex");
         lenient().when(cbServerProperties.getElasticDiscussionJsonPath()).thenReturn("jsonPath");
@@ -84,6 +87,7 @@ class AnswerPostReplyServiceImplTest {
         objectMapperField.setAccessible(true);
         objectMapperField.set(service, objectMapper);
         ReflectionTestUtils.setField(service, "objectMapper", objectMapper);
+        discussionServiceUtil = new DiscussionServiceUtil(cbServerProperties);
     }
 
     private JsonNode buildValidPayload() {
@@ -895,6 +899,262 @@ class AnswerPostReplyServiceImplTest {
 
         // ---- Verify producer push ----
         verify(producer).push(eq("test-topic"), any(ObjectNode.class));
+    }
+
+    @Test
+    void testDeleteCacheByPrefix_withKeys() {
+        Set<String> keys = Set.of("prefix_123", "prefix_456");
+        when(redisTemplate.keys("test_*")).thenReturn(keys);
+
+        ReflectionTestUtils.invokeMethod(service, "deleteCacheByPrefix", "test");
+
+        verify(redisTemplate).delete(keys);
+    }
+
+    @Test
+    void testGetFormattedCurrentTime() {
+        Date now = new Date();
+        String result = ReflectionTestUtils.invokeMethod(service, "getFormattedCurrentTime", now);
+        assertNotNull(result);
+        assertTrue(result.contains(":")); // formatted timestamp
+    }
+
+    @Test
+    void testCreateAnswerPostReply_invalidParentType() {
+        JsonNode payload = buildValidPayload();
+        DiscussionEntity discussionEntity = mockDiscussionEntity();
+        ((ObjectNode) discussionEntity.getData()).put(Constants.TYPE, Constants.QUESTION);
+
+        when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
+        when(discussionRepository.findById(parentAnswerPostId)).thenReturn(Optional.of(discussionEntity));
+
+        ApiResponse response = service.createAnswerPostReply(payload, token);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void testCreateAnswerPostReply_parentSuspended() {
+        JsonNode payload = buildValidPayload();
+        DiscussionEntity discussionEntity = mockDiscussionEntity();
+        ((ObjectNode) discussionEntity.getData()).put(Constants.STATUS, Constants.SUSPENDED);
+
+        when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
+        when(discussionRepository.findById(parentAnswerPostId)).thenReturn(Optional.of(discussionEntity));
+
+        ApiResponse response = service.createAnswerPostReply(payload, token);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void testUpdateAnswerPostReply_withSuspendedStatus_shouldFail() {
+        ObjectNode dbData = new ObjectMapper().createObjectNode();
+        dbData.put(Constants.TYPE, Constants.ANSWER_POST_REPLY);
+        dbData.put(Constants.STATUS, Constants.SUSPENDED);
+
+        DiscussionAnswerPostReplyEntity entity = new DiscussionAnswerPostReplyEntity();
+        entity.setIsActive(true);
+        entity.setData(dbData);
+        entity.setDiscussionId("reply123");
+
+        when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
+        when(discussionAnswerPostReplyRepository.findById("reply123")).thenReturn(Optional.of(entity));
+
+        ObjectNode input = new ObjectMapper().createObjectNode();
+        input.put(Constants.ANSWER_POST_REPLY_ID, "reply123");
+
+        ApiResponse response = service.updateAnswerPostReply(input, token);
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void testCreateAnswerPostReply_noMentionedUsers() {
+        JsonNode payload = buildValidPayload();
+        DiscussionEntity discussionEntity = mockDiscussionEntity();
+        when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
+        when(discussionRepository.findById(parentAnswerPostId))
+                .thenReturn(Optional.of(discussionEntity));
+        when(cassandraOperation.getRecordsByPropertiesWithoutFiltering(any(), any(), any(), any(), any()))
+                .thenReturn(mockCommunityDetails());
+        when(objectMapper.createObjectNode()).thenReturn(new ObjectMapper().createObjectNode());
+        when(objectMapper.convertValue(any(), eq(Map.class))).thenReturn(new HashMap<>());
+        when(discussionRepository.save(any(DiscussionEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        ApiResponse response = service.createAnswerPostReply(payload, token);
+        assertEquals(HttpStatus.CREATED, response.getResponseCode());
+    }
+
+    @Test
+    void testCreateAnswerPostReply_userNotPartOfCommunity() {
+        JsonNode payload = buildValidPayload();
+        DiscussionEntity discussionEntity = mockDiscussionEntity();
+
+        when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
+        when(discussionRepository.findById(parentAnswerPostId)).thenReturn(Optional.of(discussionEntity));
+        when(cassandraOperation.getRecordsByPropertiesWithoutFiltering(any(), any(), any(), any(), any()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = service.createAnswerPostReply(payload, token);
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.USER_NOT_PART_OF_COMMUNITY, response.getParams().getErrMsg());
+    }
+
+    @Test
+    void testCreateAnswerPostReply_notificationException() {
+        JsonNode payload = buildValidPayload();
+        DiscussionEntity discussionEntity = mockDiscussionEntity();
+        when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
+        when(discussionRepository.findById(parentAnswerPostId)).thenReturn(Optional.of(discussionEntity));
+        when(cassandraOperation.getRecordsByPropertiesWithoutFiltering(any(), any(), any(), any(), any()))
+                .thenReturn(mockCommunityDetails());
+        when(objectMapper.createObjectNode()).thenReturn(new ObjectMapper().createObjectNode());
+        when(objectMapper.convertValue(any(), eq(Map.class))).thenReturn(new HashMap<>());
+        when(discussionRepository.save(any(DiscussionEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        doThrow(new RuntimeException("notif fail"))
+                .when(notificationTriggerService)
+                .triggerNotification(any(), any(), anyList(), any(), any(), any());
+        ApiResponse response = service.createAnswerPostReply(payload, token);
+        assertEquals(HttpStatus.CREATED, response.getResponseCode());
+    }
+
+
+    @Test
+    void testUpdateAnswerPostReply_noMentionedUsers() {
+        ObjectNode input = new ObjectMapper().createObjectNode();
+        input.put(Constants.ANSWER_POST_REPLY_ID, "reply123");
+
+        ObjectNode dbData = new ObjectMapper().createObjectNode();
+        dbData.put(Constants.TYPE, Constants.ANSWER_POST_REPLY);
+        dbData.put(Constants.STATUS, Constants.ACTIVE);
+        dbData.put(Constants.PARENT_ANSWER_POST_ID, "parent123");
+        dbData.put(Constants.COMMUNITY_ID, "comm");
+
+        DiscussionAnswerPostReplyEntity entity = new DiscussionAnswerPostReplyEntity();
+        entity.setIsActive(true);
+        entity.setData(dbData);
+        entity.setDiscussionId("reply123");
+
+        when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
+        when(discussionAnswerPostReplyRepository.findById("reply123")).thenReturn(Optional.of(entity));
+        when(objectMapper.createObjectNode()).thenReturn(new ObjectMapper().createObjectNode());
+        when(objectMapper.convertValue(any(), eq(Map.class))).thenReturn(new HashMap<>());
+        when(cbServerProperties.getDiscussionEntity()).thenReturn("discussionEntity");
+        when(cbServerProperties.getElasticDiscussionJsonPath()).thenReturn("jsonPath");
+        when(cbServerProperties.getKafkaProcessDetectLanguageTopic()).thenReturn("topic");
+
+        ApiResponse response = service.updateAnswerPostReply(input, token);
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+    }
+
+    @Test
+    void testUpdateAnswerPostReply_notificationException() {
+        ObjectNode input = new ObjectMapper().createObjectNode();
+        input.put(Constants.ANSWER_POST_REPLY_ID, "reply123");
+        ObjectNode dbData = new ObjectMapper().createObjectNode();
+        dbData.put(Constants.TYPE, Constants.ANSWER_POST_REPLY);
+        dbData.put(Constants.STATUS, Constants.ACTIVE);
+        dbData.put(Constants.PARENT_ANSWER_POST_ID, "parent123");
+        dbData.put(Constants.COMMUNITY_ID, "comm");
+        dbData.set(Constants.MENTIONED_USERS, new ObjectMapper().createArrayNode());
+        DiscussionAnswerPostReplyEntity entity = new DiscussionAnswerPostReplyEntity();
+        entity.setIsActive(true);
+        entity.setData(dbData);
+        entity.setDiscussionId("reply123");
+        when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
+        when(discussionAnswerPostReplyRepository.findById("reply123"))
+                .thenReturn(Optional.of(entity));
+        when(objectMapper.convertValue(any(), eq(Map.class)))
+                .thenReturn(new HashMap<>());
+        ObjectNode fakeNode = new ObjectMapper().createObjectNode();
+        when(objectMapper.createObjectNode()).thenReturn(fakeNode);
+        when(cbServerProperties.getKafkaProcessDetectLanguageTopic()).thenReturn("topic");
+        doThrow(new RuntimeException("notif fail"))
+                .when(notificationTriggerService)
+                .triggerNotification(any(), any(), anyList(), any(), any(), any());
+        ApiResponse response = service.updateAnswerPostReply(input, token);
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+    }
+
+
+
+
+    @Test
+    void testDeleteCacheByPrefix_noKeys() {
+        when(redisTemplate.keys("prefix_*")).thenReturn(Collections.emptySet());
+        ReflectionTestUtils.invokeMethod(service, "deleteCacheByPrefix", "prefix");
+        verify(redisTemplate, never()).delete(anySet());
+    }
+
+    @Test
+    void testGetReportStatistics_noConfigData() {
+        Map<String, Object> input = Map.of(DISCUSSION_ID, "id", TYPE, QUESTION);
+        when(cacheService.getCache(Constants.VALID_REASONS_CACHE_KEY)).thenReturn(null);
+        when(cassandraOperation.getRecordsByPropertiesWithoutFiltering(any(), any(), any(), any(), any()))
+                .thenReturn(Collections.emptyList());
+        ApiResponse response = service.getReportStatistics(input);
+        assertEquals(HttpStatus.NOT_FOUND, response.getResponseCode());
+        assertNull(response.getParams().getErrMsg());
+    }
+
+
+    @Test
+    void testGetReportStatistics_noReportReasons() throws Exception {
+        Map<String, Object> input = Map.of(DISCUSSION_ID, "id", TYPE, QUESTION);
+        when(cacheService.getCache(Constants.VALID_REASONS_CACHE_KEY)).thenReturn(null);
+        Set<String> validReasons = Set.of("Spam");
+        String validReasonsJson = new ObjectMapper().writeValueAsString(validReasons);
+        Map<String, Object> configEntry = Map.of(Constants.VALUE, validReasonsJson);
+        when(cassandraOperation.getRecordsByPropertiesWithoutFiltering(any(), any(), any(), any(), any()))
+                .thenReturn(List.of(configEntry))   // first call: config present
+                .thenReturn(Collections.emptyList()); // second call: no report reasons
+        ApiResponse response = service.getReportStatistics(input);
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertNull(response.getParams().getErrMsg());
+    }
+
+
+    @Test
+    void testMigrateRecentReportedTime_withUpdateExisting() {
+        Map<String, Object> record1 = Map.of(Constants.DISCUSSION_ID_KEY, "id",
+                Constants.CREATED_ON_KEY, Instant.now());
+        when(cassandraOperation.getRecordsByPropertiesByKey(any(), any(), any(), any(), any()))
+                .thenReturn(List.of(record1));
+
+        DiscussionEntity entity = new DiscussionEntity();
+        entity.setData(new ObjectMapper().createObjectNode());
+        when(discussionRepository.findById("id")).thenReturn(Optional.of(entity));
+
+        service.migrateRecentReportedTime();
+        verify(discussionRepository).save(any());
+    }
+
+
+    @Test
+    void testManagePost_postIsActiveButSuspendCalled() {
+        when(accessTokenValidator.verifyUserToken("token")).thenReturn("admin");
+        Map<String, Object> payload = getValidPayload(Constants.ANSWER_POST_REPLY, "id");
+        ObjectNode data = new ObjectMapper().createObjectNode()
+                .put(Constants.STATUS, Constants.ACTIVE)
+                .put(Constants.COMMUNITY_ID, "comm");
+        DiscussionAnswerPostReplyEntity entity = new DiscussionAnswerPostReplyEntity();
+        entity.setData(data);
+        entity.setIsActive(true);
+        when(discussionAnswerPostReplyRepository.findById("id")).thenReturn(Optional.of(entity));
+        ApiResponse response = service.managePost(payload, "token", Constants.SUSPEND);
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(SUCCESS, response.getParams().getStatus());
+    }
+
+    @Test
+    void testMigrateRecentReportedTime_noRecords() {
+        when(cassandraOperation.getRecordsByPropertiesByKey(any(), any(), any(), any(), any()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = service.migrateRecentReportedTime();
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
     }
 
 }

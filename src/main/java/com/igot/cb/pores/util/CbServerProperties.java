@@ -118,4 +118,7 @@ public class CbServerProperties {
   @Value("${enable.english.language.by.default}")
   private boolean enableEnglishLanguageByDefault;
 
+  @Value("${jwt.demand.search.key.name}")
+  private String jwtDemandSearchKeyName;
+
 }

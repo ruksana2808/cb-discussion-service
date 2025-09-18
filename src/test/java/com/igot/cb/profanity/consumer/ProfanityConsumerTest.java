@@ -18,6 +18,7 @@ import com.igot.cb.pores.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.pores.elasticsearch.service.EsUtilService;
 import com.igot.cb.pores.util.CbServerProperties;
 import com.igot.cb.pores.util.Constants;
+import com.igot.cb.pores.util.DiscussionServiceUtil;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -80,6 +81,7 @@ class ProfanityConsumerTest {
     @Mock
     private AnswerPostReplyService answerPostReplyService;
 
+    @Mock private DiscussionServiceUtil discussionServiceUtil;
 
     private static final String BASE_JSON_TEMPLATE = """
             {
@@ -345,6 +347,7 @@ class ProfanityConsumerTest {
         SearchCriteria mockCriteria = mock(SearchCriteria.class);
         when(discussionService.createSearchCriteriaWithDefaults(eq(parentDiscussionId), eq("community1"), eq(Constants.ANSWER_POST)))
                 .thenReturn(mockCriteria);
+        doReturn("dummy-key").when(discussionServiceUtil).generateRedisJwtTokenKey(any());
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
         when(valueOps.getAndDelete(anyString())).thenReturn("deleted");
         Field redisTemplateField = ProfanityConsumer.class.getDeclaredField("redisTemplate");
@@ -388,6 +391,7 @@ class ProfanityConsumerTest {
         when(discussionService.createSearchCriteriaWithDefaults(eq(parentDiscussionId), eq("community1"), eq(Constants.ANSWER_POST)))
                 .thenReturn(mockDiscussionCriteria);
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
+        doReturn("dummy-key").when(discussionServiceUtil).generateRedisJwtTokenKey(any());
         when(valueOps.getAndDelete(anyString())).thenReturn("deleted");
         Field redisTemplateField = ProfanityConsumer.class.getDeclaredField("redisTemplate");
         redisTemplateField.setAccessible(true);
@@ -580,6 +584,7 @@ class ProfanityConsumerTest {
         Field redisTemplateField = ProfanityConsumer.class.getDeclaredField("redisTemplate");
         redisTemplateField.setAccessible(true);
         redisTemplateField.set(profanityConsumer, redisTemplate);
+        doReturn("dummy-key").when(discussionServiceUtil).generateRedisJwtTokenKey(any());
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
         when(valueOps.getAndDelete(anyString())).thenReturn("deleted");
 

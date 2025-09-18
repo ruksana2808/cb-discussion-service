@@ -184,6 +184,7 @@ class DiscussionServiceImplMethodTest {
 
     @Test
     void test_generateRedisTokenKey_allBranches() throws Exception {
+        when(cbServerProperties.getJwtDemandSearchKeyName()).thenReturn("test-secret");
         when(cbServerProperties.getUserFeedFilterCriteriaMapSize()).thenReturn(2);
 
         // 1️⃣ User Feed Case
@@ -220,6 +221,7 @@ class DiscussionServiceImplMethodTest {
         assertNotNull(key3);
         assertFalse(key3.isEmpty());
     }
+
 
     @SuppressWarnings("unchecked")
     @Test

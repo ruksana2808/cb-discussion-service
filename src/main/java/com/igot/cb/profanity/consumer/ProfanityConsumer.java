@@ -74,6 +74,8 @@ public class ProfanityConsumer {
     @Autowired
     private AnswerPostReplyService answerPostReplyService;
 
+    @Autowired
+    private DiscussionServiceUtil discussionServiceUtil;
     /**
      * Consumes messages from the Kafka topic for profanity checks on text content.
      * It processes the text data, checks if it contains profane content, and updates
@@ -257,7 +259,7 @@ public class ProfanityConsumer {
             discussionService.deleteCacheByCommunity(Constants.DISCUSSION_CACHE_PREFIX + data.get(Constants.COMMUNITY_ID).asText());
             discussionService.updateCacheForFirstFivePages(data.get(Constants.COMMUNITY_ID).asText(), false);
             redisTemplate.opsForValue()
-                    .getAndDelete(DiscussionServiceUtil.generateRedisJwtTokenKey(discussionService.createSearchCriteriaWithDefaults(
+                    .getAndDelete(discussionServiceUtil.generateRedisJwtTokenKey(discussionService.createSearchCriteriaWithDefaults(
                             parentDiscussionId,
                             data.get(Constants.COMMUNITY_ID).asText(),
                             Constants.ANSWER_POST)));
@@ -289,11 +291,11 @@ public class ProfanityConsumer {
         );
         notificationTriggerService.triggerNotification(Constants.PROFANITY_CHECK, ALERT, Collections.singletonList(userId), TITLE, firstName, notificationData);
         redisTemplate.opsForValue()
-                .getAndDelete(DiscussionServiceUtil.generateRedisJwtTokenKey(answerPostReplyService.createDefaultSearchCriteria(
+                .getAndDelete(discussionServiceUtil.generateRedisJwtTokenKey(answerPostReplyService.createDefaultSearchCriteria(
                         parentAnswerPostId,
                         data.get(Constants.COMMUNITY_ID).asText())));
         redisTemplate.opsForValue()
-                .getAndDelete(DiscussionServiceUtil.generateRedisJwtTokenKey(discussionService.createSearchCriteriaWithDefaults(
+                .getAndDelete(discussionServiceUtil.generateRedisJwtTokenKey(discussionService.createSearchCriteriaWithDefaults(
                         parentDiscussionId,
                         data.get(Constants.COMMUNITY_ID).asText(),
                         Constants.ANSWER_POST)));

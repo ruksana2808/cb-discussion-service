@@ -71,9 +71,7 @@ public class KeyManager {
   public static PublicKey loadPublicKey(String key) throws Exception {
     String publicKey = new String(key.getBytes(), StandardCharsets.UTF_8);
     // Remove header and footer from the key string
-    publicKey = publicKey.replaceAll("(-+BEGIN PUBLIC KEY-+)", "");
-    publicKey = publicKey.replaceAll("(-+END PUBLIC KEY-+)", "");
-    publicKey = publicKey.replaceAll("[\\r\\n]+", "");
+    publicKey = publicKey.replaceAll("(-+BEGIN PUBLIC KEY-+)", "").replaceAll("(-+END PUBLIC KEY-+)", "").replaceAll("[\\r\\n]+", "");
     // Decode the key string from Base64
     byte[] keyBytes = Base64Util.decode(publicKey.getBytes("UTF-8"), Base64Util.DEFAULT);
     // Convert the key bytes to a PublicKey object

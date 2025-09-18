@@ -101,6 +101,9 @@ public class DiscussionServiceImpl implements DiscussionService {
     @Autowired
     private IProfanityCheckService profanityCheckService;
 
+    @Autowired
+    private DiscussionServiceUtil discussionServiceUtil;
+
     @PostConstruct
     public void init() {
         if (storageService == null) {
@@ -559,7 +562,7 @@ public class DiscussionServiceImpl implements DiscussionService {
                                         Constants.DECREMENT);
                             }
                             redisTemplate.opsForValue().getAndDelete(
-                                    DiscussionServiceUtil.generateRedisJwtTokenKey(createSearchCriteriaWithDefaults(
+                                    discussionServiceUtil.generateRedisJwtTokenKey(createSearchCriteriaWithDefaults(
                                             data.get(Constants.PARENT_DISCUSSION_ID).asText(),
                                             data.get(Constants.COMMUNITY_ID).asText(),
                                             Constants.ANSWER_POST)));
@@ -747,13 +750,13 @@ public class DiscussionServiceImpl implements DiscussionService {
 
             if (Constants.ANSWER_POST.equals(type)) {
                 redisTemplate.opsForValue()
-                        .getAndDelete(DiscussionServiceUtil.generateRedisJwtTokenKey(createSearchCriteriaWithDefaults(
+                        .getAndDelete(discussionServiceUtil.generateRedisJwtTokenKey(createSearchCriteriaWithDefaults(
                                 (String) discussionData.get(Constants.PARENT_DISCUSSION_ID),
                                 (String) discussionData.get(Constants.COMMUNITY_ID),
                                 Constants.ANSWER_POST)));
             }
             if (Constants.ANSWER_POST_REPLY.equals(type)) {
-                redisTemplate.opsForValue().getAndDelete(DiscussionServiceUtil.generateRedisJwtTokenKey(createDefaultSearchCriteria(
+                redisTemplate.opsForValue().getAndDelete(discussionServiceUtil.generateRedisJwtTokenKey(createDefaultSearchCriteria(
                         (String) discussionData.get(Constants.PARENT_ANSWER_POST_ID),
                         (String) discussionData.get(Constants.COMMUNITY_ID))));
             }
@@ -943,7 +946,7 @@ public class DiscussionServiceImpl implements DiscussionService {
             deleteCacheByCommunity(Constants.DISCUSSION_CACHE_PREFIX + answerPostData.get(Constants.COMMUNITY_ID).asText());
             updateCacheForFirstFivePages(answerPostData.get(Constants.COMMUNITY_ID).asText(), false);
             redisTemplate.opsForValue()
-                    .getAndDelete(DiscussionServiceUtil.generateRedisJwtTokenKey(createSearchCriteriaWithDefaults(
+                    .getAndDelete(discussionServiceUtil.generateRedisJwtTokenKey(createSearchCriteriaWithDefaults(
                             answerPostData.get(Constants.PARENT_DISCUSSION_ID).asText(),
                             answerPostData.get(Constants.COMMUNITY_ID).asText(),
                             Constants.ANSWER_POST)));
@@ -1200,7 +1203,7 @@ public class DiscussionServiceImpl implements DiscussionService {
 
             if (Constants.ANSWER_POST_REPLY.equals(type)) {
                 redisTemplate.opsForValue()
-                        .getAndDelete(DiscussionServiceUtil.generateRedisJwtTokenKey(createDefaultSearchCriteria(
+                        .getAndDelete(discussionServiceUtil.generateRedisJwtTokenKey(createDefaultSearchCriteria(
                                 data.get(Constants.PARENT_ANSWER_POST_ID).asText(),
                                 data.get(Constants.COMMUNITY_ID).asText())));
             } else {
@@ -1419,7 +1422,7 @@ public class DiscussionServiceImpl implements DiscussionService {
             esUtilService.updateDocument(cbServerProperties.getDiscussionEntity(), discussionEntity.getDiscussionId(), discussionAnswerPostDetailMap, cbServerProperties.getElasticDiscussionJsonPath());
             cacheService.putCache(Constants.DISCUSSION_CACHE_PREFIX + String.valueOf(discussionEntity.getDiscussionId()), jsonNode);
             redisTemplate.opsForValue()
-                    .getAndDelete(DiscussionServiceUtil.generateRedisJwtTokenKey(createSearchCriteriaWithDefaults(
+                    .getAndDelete(discussionServiceUtil.generateRedisJwtTokenKey(createSearchCriteriaWithDefaults(
                             data.get(Constants.PARENT_DISCUSSION_ID).asText(),
                             data.get(Constants.COMMUNITY_ID).asText(),
                             Constants.ANSWER_POST)));
@@ -1600,13 +1603,13 @@ public class DiscussionServiceImpl implements DiscussionService {
                 searchCriteria.setSearchString((String) requestData.get(Constants.SEARCH_STRING));
             }
 
-            SearchResult searchResult = redisTemplate.opsForValue().get(DiscussionServiceUtil.generateRedisJwtTokenKey(searchCriteria));
+            SearchResult searchResult = redisTemplate.opsForValue().get(discussionServiceUtil.generateRedisJwtTokenKey(searchCriteria));
             if (searchResult == null) {
                 searchResult = esUtilService.searchDocuments(cbServerProperties.getDiscussionEntity(), searchCriteria, cbServerProperties.getElasticDiscussionJsonPath());
                 List<Map<String, Object>> data = searchResult.getData();
                 fetchAndEnhanceDiscussions(data, false);
                 searchResult.setData(data);
-                redisTemplate.opsForValue().set(DiscussionServiceUtil.generateRedisJwtTokenKey(searchCriteria), searchResult, cbServerProperties.getSearchResultRedisTtl(), TimeUnit.SECONDS);
+                redisTemplate.opsForValue().set(discussionServiceUtil.generateRedisJwtTokenKey(searchCriteria), searchResult, cbServerProperties.getSearchResultRedisTtl(), TimeUnit.SECONDS);
             }
 
             HashMap<String, Object> result = new HashMap<>();
@@ -1984,7 +1987,7 @@ public class DiscussionServiceImpl implements DiscussionService {
                 }
 
                 String reqJsonString = objectMapper.writeValueAsString(searchCriteria);
-                return JWT.create().withClaim(Constants.REQUEST_PAYLOAD, reqJsonString).sign(Algorithm.HMAC256(Constants.JWT_SECRET_KEY));
+                return JWT.create().withClaim(Constants.REQUEST_PAYLOAD, reqJsonString).sign(Algorithm.HMAC256(cbServerProperties.getJwtDemandSearchKeyName()));
             } catch (JsonProcessingException e) {
                 log.error("Error occurred while converting json object to json string", e);
             }
