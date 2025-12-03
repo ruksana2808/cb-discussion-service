@@ -58,6 +58,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
+import org.springframework.data.redis.core.ScanOptions;
+import org.springframework.data.redis.core.Cursor;
+import java.util.HashSet;
+
 import static com.igot.cb.pores.util.Constants.*;
 
 @Service
@@ -1800,13 +1804,21 @@ public class DiscussionServiceImpl implements DiscussionService {
     }
 
     public void deleteCacheByCommunity(String prefix) {
+        long startTime = System.currentTimeMillis();
         String pattern = prefix + "_*";
-        Set<String> keys = redisTemplate.keys(pattern);
+        Set<String> keys = new HashSet<>();
+        ScanOptions options = ScanOptions.scanOptions()
+                .match(pattern)
+                .count(cbServerProperties.getRedisScanCountSize())
+                .build();
+        try (Cursor<String> cursor = redisTemplate.scan(options)) {
+            cursor.forEachRemaining(keys::add);
+        }
         if (!keys.isEmpty()) {
             redisTemplate.delete(keys);
-            log.info("Deleted cache keys: {}", keys);
+            log.info("Deleted {} cache keys matching pattern: {} in {} ms", keys.size(), pattern, System.currentTimeMillis() - startTime);
         } else {
-            log.info("No cache keys found for pattern: {}", pattern);
+            log.info("No cache keys found for pattern: {} in {} ms", pattern, System.currentTimeMillis() - startTime);
         }
     }
 

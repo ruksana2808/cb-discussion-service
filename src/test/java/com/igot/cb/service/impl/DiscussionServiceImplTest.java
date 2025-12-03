@@ -36,7 +36,9 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
@@ -89,6 +91,9 @@ class DiscussionServiceImplTest {
     private DiscussionAnswerPostReplyRepository discussionAnswerPostReplyRepository;
     @Mock
     private ValueOperations<String, SearchResult> valueOperations;
+
+    @Mock
+    private Cursor<String> cursor;
 
     @Mock
     private BaseStorageService baseStorageService;
@@ -146,6 +151,10 @@ class DiscussionServiceImplTest {
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(objectMapper.createArrayNode())
                 .thenAnswer(invocation -> realObjectMapper.createArrayNode());
+
+        // Mock cursor for deleteCacheByCommunity - empty by default
+        lenient().when(redisTemplate.scan(any(ScanOptions.class))).thenReturn(cursor);
+        lenient().doAnswer(invocation -> null).when(cursor).forEachRemaining(any());
 
         // Mock cbServerProperties
         when(cbServerProperties.getCloudStorageTypeName()).thenReturn("s3");
@@ -1453,6 +1462,16 @@ class DiscussionServiceImplTest {
         when(objectMapper.createObjectNode()).thenReturn(realObjectMapper.createObjectNode());
         when(cbServerProperties.getDiscussionEntity()).thenReturn("discussionEntity");
         when(cbServerProperties.getElasticDiscussionJsonPath()).thenReturn("elasticPath");
+        when(cbServerProperties.getRedisScanCountSize()).thenReturn(100);
+
+        // Mock esUtilService
+        when(esUtilService.updateDocument(anyString(), anyString(), any(), anyString())).thenReturn("success");
+
+        // Mock cacheService
+        doNothing().when(cacheService).putCache(anyString(), any());
+
+        // Mock cassandraOperation for insert - returns Object
+        when(cassandraOperation.insertRecord(anyString(), anyString(), any())).thenReturn(new HashMap<>());
 
         // Act
         ApiResponse response = discussionService.report(token, reportData);
@@ -1494,6 +1513,19 @@ class DiscussionServiceImplTest {
         when(discussionAnswerPostReplyRepository.findById("testDiscussionId")).thenReturn(Optional.of(replyEntity));
         when(cassandraOperation.getRecordsByPropertiesWithoutFiltering(anyString(), anyString(), anyMap(), any(), any())).thenReturn(new ArrayList<>());
         when(cbServerProperties.isDiscussionReportHidePost()).thenReturn(true);
+        when(cbServerProperties.getDiscussionEntity()).thenReturn("discussionEntity");
+        when(cbServerProperties.getElasticDiscussionJsonPath()).thenReturn("elasticPath");
+        when(cbServerProperties.getRedisScanCountSize()).thenReturn(100);
+        when(objectMapper.createObjectNode()).thenReturn(realObjectMapper.createObjectNode());
+
+        // Mock esUtilService
+        when(esUtilService.updateDocument(anyString(), anyString(), any(), anyString())).thenReturn("success");
+
+        // Mock discussionAnswerPostReplyRepository.save
+        when(discussionAnswerPostReplyRepository.save(any(DiscussionAnswerPostReplyEntity.class))).thenReturn(replyEntity);
+
+        // Mock cassandraOperation for insert - returns Object
+        when(cassandraOperation.insertRecord(anyString(), anyString(), any())).thenReturn(new HashMap<>());
 
         // Act
         ApiResponse response = discussionService.report(token, reportData);
@@ -3391,7 +3423,18 @@ class DiscussionServiceImplTest {
         when(cbServerProperties.getElasticDiscussionJsonPath()).thenReturn("path");
         when(cbServerProperties.getKafkaProcessDetectLanguageTopic()).thenReturn("topic");
         when(cbServerProperties.getFilterCriteriaForGlobalFeed()).thenReturn("{\"requestedFields\":[],\"filterCriteriaMap\":{}}");
+        when(cbServerProperties.getRedisScanCountSize()).thenReturn(100);
+        when(cbServerProperties.getDiscussionEsDefaultPageSize()).thenReturn(10);
+
+        // Mock esUtilService
+        when(esUtilService.addDocument(anyString(), anyString(), any(), anyString())).thenReturn("success");
         when(esUtilService.searchDocuments(any(), any(), any())).thenReturn(new SearchResult());
+
+        // Mock cacheService
+        doNothing().when(cacheService).putCache(anyString(), any());
+
+        // Mock producer
+        doNothing().when(producer).push(anyString(), any());
 
         ApiResponse response = discussionService.createDiscussion(discussionDetails, token);
 
@@ -3427,7 +3470,20 @@ class DiscussionServiceImplTest {
         when(cbServerProperties.getElasticDiscussionJsonPath()).thenReturn("path");
         when(cbServerProperties.getKafkaProcessDetectLanguageTopic()).thenReturn("topic");
         when(cbServerProperties.getFilterCriteriaForGlobalFeed()).thenReturn("{\"requestedFields\":[],\"filterCriteriaMap\":{}}");
+        when(cbServerProperties.getRedisScanCountSize()).thenReturn(100);
+        when(cbServerProperties.getDiscussionEsDefaultPageSize()).thenReturn(10);
+
+        // Mock esUtilService
+        when(esUtilService.addDocument(anyString(), anyString(), any(), anyString())).thenReturn("success");
         when(esUtilService.searchDocuments(any(), any(), any())).thenReturn(new SearchResult());
+
+        // Mock cacheService and producer
+        doNothing().when(cacheService).putCache(anyString(), any());
+        doNothing().when(producer).push(anyString(), any());
+
+        // Mock notification services
+        when(helperMethodService.fetchUserFirstName(userId)).thenReturn("John");
+        doNothing().when(notificationTriggerService).triggerNotification(anyString(), anyString(), any(), anyString(), anyString(), any());
 
         ApiResponse response = discussionService.createDiscussion(discussionDetails, token);
 
@@ -3466,7 +3522,16 @@ class DiscussionServiceImplTest {
         when(cbServerProperties.getElasticDiscussionJsonPath()).thenReturn("path");
         when(cbServerProperties.getKafkaProcessDetectLanguageTopic()).thenReturn("topic");
         when(cbServerProperties.getFilterCriteriaForGlobalFeed()).thenReturn("{\"requestedFields\":[],\"filterCriteriaMap\":{}}");
+        when(cbServerProperties.getRedisScanCountSize()).thenReturn(100);
+        when(cbServerProperties.getDiscussionEsDefaultPageSize()).thenReturn(10);
+
+        // Mock esUtilService
+        when(esUtilService.addDocument(anyString(), anyString(), any(), anyString())).thenReturn("success");
         when(esUtilService.searchDocuments(any(), any(), any())).thenReturn(new SearchResult());
+
+        // Mock cacheService and producer
+        doNothing().when(cacheService).putCache(anyString(), any());
+        doNothing().when(producer).push(anyString(), any());
 
         ApiResponse response = discussionService.createDiscussion(discussionDetails, token);
 
@@ -3497,7 +3562,15 @@ class DiscussionServiceImplTest {
         when(cbServerProperties.getKafkaProcessDetectLanguageTopic()).thenReturn("topic");
         when(cbServerProperties.getDiscussionEsDefaultPageSize()).thenReturn(10);
         when(cbServerProperties.getFilterCriteriaForGlobalFeed()).thenReturn("{\"requestedFields\":[],\"filterCriteriaMap\":{}}");
+        when(cbServerProperties.getRedisScanCountSize()).thenReturn(100);
+
+        // Mock esUtilService
+        when(esUtilService.addDocument(anyString(), anyString(), any(), anyString())).thenReturn("success");
         when(esUtilService.searchDocuments(any(), any(), any())).thenReturn(new SearchResult());
+
+        // Mock cacheService and producer
+        doNothing().when(cacheService).putCache(anyString(), any());
+        doNothing().when(producer).push(anyString(), any());
 
         ApiResponse response = discussionService.createDiscussion(discussionDetails, token);
 
@@ -3529,7 +3602,16 @@ class DiscussionServiceImplTest {
         when(cbServerProperties.getElasticDiscussionJsonPath()).thenReturn("path");
         when(cbServerProperties.getKafkaProcessDetectLanguageTopic()).thenReturn("topic");
         when(cbServerProperties.getFilterCriteriaForGlobalFeed()).thenReturn("{\"requestedFields\":[],\"filterCriteriaMap\":{}}");
+        when(cbServerProperties.getRedisScanCountSize()).thenReturn(100);
+        when(cbServerProperties.getDiscussionEsDefaultPageSize()).thenReturn(10);
+
+        // Mock esUtilService
+        when(esUtilService.addDocument(anyString(), anyString(), any(), anyString())).thenReturn("success");
         when(esUtilService.searchDocuments(any(), any(), any())).thenReturn(new SearchResult());
+
+        // Mock cacheService and producer
+        doNothing().when(cacheService).putCache(anyString(), any());
+        doNothing().when(producer).push(anyString(), any());
 
         ApiResponse response = discussionService.createDiscussion(discussionDetails, token);
 
@@ -3580,12 +3662,20 @@ class DiscussionServiceImplTest {
         when(cbServerProperties.getDiscussionFeedRedisTtl()).thenReturn(3600L);
         when(cbServerProperties.getFilterCriteriaForGlobalFeed()).thenReturn("{\"requestedFields\":[],\"filterCriteriaMap\":{}}");
         when(cbServerProperties.getKafkaProcessDetectLanguageTopic()).thenReturn("topic");
+        when(cbServerProperties.getRedisScanCountSize()).thenReturn(100);
         when(objectMapper.readValue(anyString(), eq(SearchCriteria.class))).thenReturn(new SearchCriteria());
 
         // ✅ Return SearchResult with non-null documents
         SearchResult fakeResult = new SearchResult();
         fakeResult.setData(new ArrayList<>()); // empty list, avoids NPE
         when(esUtilService.searchDocuments(any(), any(), any())).thenReturn(fakeResult);
+
+        // Mock esUtilService.updateDocument
+        when(esUtilService.updateDocument(anyString(), anyString(), any(), anyString())).thenReturn("success");
+
+        // Mock cacheService and producer
+        doNothing().when(cacheService).putCache(anyString(), any());
+        doNothing().when(producer).push(anyString(), any());
 
         ApiResponse response = discussionService.updateDiscussion(updateData, token);
 
@@ -3618,10 +3708,22 @@ class DiscussionServiceImplTest {
         when(cbServerProperties.getDiscussionEntity()).thenReturn("discussion");
         when(cbServerProperties.getElasticDiscussionJsonPath()).thenReturn("path");
         when(cbServerProperties.getFilterCriteriaForGlobalFeed()).thenReturn("{\"requestedFields\":[],\"filterCriteriaMap\":{}}");
-        when(esUtilService.searchDocuments(any(), any(), any())).thenReturn(new SearchResult());
-        when(cbServerProperties.getKafkaProcessDetectLanguageTopic()).thenReturn("topic");
+        when(cbServerProperties.getRedisScanCountSize()).thenReturn(100);
         when(cbServerProperties.getDiscussionEsDefaultPageSize()).thenReturn(10);
+        when(cbServerProperties.getKafkaProcessDetectLanguageTopic()).thenReturn("topic");
         when(objectMapper.readValue(anyString(), eq(SearchCriteria.class))).thenReturn(new SearchCriteria());
+
+        // Mock esUtilService
+        when(esUtilService.updateDocument(anyString(), anyString(), any(), anyString())).thenReturn("success");
+        when(esUtilService.searchDocuments(any(), any(), any())).thenReturn(new SearchResult());
+
+        // Mock cacheService and producer
+        doNothing().when(cacheService).putCache(anyString(), any());
+        doNothing().when(producer).push(anyString(), any());
+
+        // Mock notification services
+        when(helperMethodService.fetchUserFirstName(userId)).thenReturn("John");
+        doNothing().when(notificationTriggerService).triggerNotification(anyString(), anyString(), any(), anyString(), anyString(), any());
 
         ApiResponse response = discussionService.updateDiscussion(updateData, token);
 
@@ -3686,9 +3788,17 @@ class DiscussionServiceImplTest {
         when(cbServerProperties.getElasticDiscussionJsonPath()).thenReturn("/discussion/path");
         when(cbServerProperties.getCommunityPostCount()).thenReturn("community_post_count");
         when(cbServerProperties.getKafkaProcessDetectLanguageTopic()).thenReturn("detect_language_topic");
+        when(cbServerProperties.getRedisScanCountSize()).thenReturn(100);
 
         // Mock helperMethodService
         when(helperMethodService.fetchUserFirstName(anyString())).thenReturn("John");
+
+        // Mock esUtilService
+        when(esUtilService.addDocument(anyString(), anyString(), any(), anyString())).thenReturn("success");
+
+        // Mock cacheService and producer
+        doNothing().when(cacheService).putCache(anyString(), any());
+        doNothing().when(producer).push(anyString(), any());
 
         String mockCriteriaJson = "{\"filterCriteriaMap\":{\"communityId\":[\"comm-1\"]}}";
 

@@ -121,4 +121,7 @@ public class CbServerProperties {
   @Value("${jwt.demand.search.key.name}")
   private String jwtDemandSearchKeyName;
 
+  @Value("${redis.scan.count.size}")
+  private int redisScanCountSize;
+
 }

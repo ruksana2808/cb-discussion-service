@@ -28,7 +28,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -65,6 +67,7 @@ class AnswerPostReplyServiceImplTest {
     @Mock private NotificationTriggerService notificationTriggerService;
     @Mock private Producer producer;
     @Mock private DiscussionServiceUtil discussionServiceUtil;
+    @Mock private Cursor<String> cursor;
 
     @Mock
     private ObjectNode mockObjectNode;
@@ -325,12 +328,13 @@ class AnswerPostReplyServiceImplTest {
 
     @Test
     void testManagePost_success_activate() {
-        objectMapper = new ObjectMapper(); // Ensure objectMapper is initialized
-        ReflectionTestUtils.setField(service, "objectMapper", objectMapper); // inject if needed
+        ObjectMapper realObjectMapper = new ObjectMapper(); // Use real ObjectMapper
+        ReflectionTestUtils.setField(service, "objectMapper", realObjectMapper);
+
         when(accessTokenValidator.verifyUserToken("token")).thenReturn("adminUser");
 
         Map<String, Object> payload = getValidPayload(Constants.ANSWER_POST_REPLY, "id");
-        ObjectNode data = objectMapper.createObjectNode()
+        ObjectNode data = realObjectMapper.createObjectNode()
                 .put(Constants.STATUS, Constants.SUSPENDED)
                 .put(Constants.COMMUNITY_ID, "comm");
         DiscussionAnswerPostReplyEntity entity = new DiscussionAnswerPostReplyEntity();
@@ -338,8 +342,33 @@ class AnswerPostReplyServiceImplTest {
         entity.setIsActive(true);
 
         when(discussionAnswerPostReplyRepository.findById("id")).thenReturn(Optional.of(entity));
+        when(discussionAnswerPostReplyRepository.save(any(DiscussionAnswerPostReplyEntity.class))).thenReturn(entity);
         when(cbServerProperties.getDiscussionEntity()).thenReturn("discussion");
         when(cbServerProperties.getElasticDiscussionJsonPath()).thenReturn("path");
+        when(cbServerProperties.getRedisScanCountSize()).thenReturn(100);
+
+        // Mock cassandraOperation for deleting report records
+        List<Map<String, Object>> reportUsers = new ArrayList<>();
+        Map<String, Object> user1 = new HashMap<>();
+        user1.put(Constants.USERID, "user1");
+        reportUsers.add(user1);
+        when(cassandraOperation.getRecordsByPropertiesWithoutFiltering(
+                eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.DISCUSSION_POST_REPORT_LOOKUP_BY_POST),
+                any(), any(), isNull()
+        )).thenReturn(reportUsers);
+
+        doNothing().when(cassandraOperation).deleteRecord(anyString(), anyString(), any());
+
+        // Mock esUtilService - updateDocument returns String
+        when(esUtilService.updateDocument(anyString(), anyString(), any(), anyString())).thenReturn("success");
+
+        // Mock cacheService
+        doNothing().when(cacheService).putCache(anyString(), any());
+
+        // Mock redisTemplate.scan for deleteCacheByPrefix
+        when(redisTemplate.scan(any(ScanOptions.class))).thenReturn(cursor);
+        doAnswer(invocation -> null).when(cursor).forEachRemaining(any());
 
         ApiResponse response = service.managePost(payload, "token", Constants.ACTIVE);
         assertEquals(HttpStatus.OK, response.getResponseCode());
@@ -903,8 +932,16 @@ class AnswerPostReplyServiceImplTest {
 
     @Test
     void testDeleteCacheByPrefix_withKeys() {
-        Set<String> keys = Set.of("prefix_123", "prefix_456");
-        when(redisTemplate.keys("test_*")).thenReturn(keys);
+        Set<String> keys = new HashSet<>(Arrays.asList("test_123", "test_456"));
+        when(cbServerProperties.getRedisScanCountSize()).thenReturn(100);
+        when(redisTemplate.scan(any(ScanOptions.class))).thenReturn(cursor);
+
+        // Mock cursor iteration
+        doAnswer(invocation -> {
+            java.util.function.Consumer<String> action = invocation.getArgument(0);
+            keys.forEach(action);
+            return null;
+        }).when(cursor).forEachRemaining(any());
 
         ReflectionTestUtils.invokeMethod(service, "deleteCacheByPrefix", "test");
 
@@ -1082,8 +1119,14 @@ class AnswerPostReplyServiceImplTest {
 
     @Test
     void testDeleteCacheByPrefix_noKeys() {
-        when(redisTemplate.keys("prefix_*")).thenReturn(Collections.emptySet());
+        when(cbServerProperties.getRedisScanCountSize()).thenReturn(100);
+        when(redisTemplate.scan(any(ScanOptions.class))).thenReturn(cursor);
+
+        // Mock cursor iteration with no keys
+        doAnswer(invocation -> null).when(cursor).forEachRemaining(any());
+
         ReflectionTestUtils.invokeMethod(service, "deleteCacheByPrefix", "prefix");
+
         verify(redisTemplate, never()).delete(anySet());
     }
 

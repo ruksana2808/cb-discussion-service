@@ -27,7 +27,9 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -789,10 +791,18 @@ public class AnswerPostReplyServiceImpl implements AnswerPostReplyService {
 
     private void deleteCacheByPrefix(String prefix) {
         String pattern = prefix + "_*";
-        Set<String> keys = redisTemplate.keys(pattern);
+        Set<String> keys = new HashSet<>();
+        ScanOptions options = ScanOptions.scanOptions()
+                .match(pattern)
+                .count(cbServerProperties.getRedisScanCountSize())
+                .build();
+
+        try (Cursor<String> cursor = redisTemplate.scan(options)) {
+            cursor.forEachRemaining(keys::add);
+        }
         if (!keys.isEmpty()) {
             redisTemplate.delete(keys);
-            log.info("Deleted cache keys: {}", keys);
+            log.info("Deleted {} cache keys matching pattern for actions: {}", keys.size(), pattern);
         } else {
             log.info("No cache keys found for pattern: {}", pattern);
         }
